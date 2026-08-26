@@ -1,6 +1,6 @@
 /**
- * Master Autonomous Minecraft Companion: Web Dashboard + Advanced Pathing & Builder
- * Version: 5.1.0-FixedVersion
+ * Ultimate Minecraft Companion Agent
+ * Full House Builder + Continuous Tracking + Advanced Web UI
  */
 
 const http = require('http');
@@ -18,10 +18,10 @@ const pvp = require('mineflayer-pvp').plugin;
 const botState = {
   autoEat: true,
   autoFarm: false,
-  farmingInterval: null
+  farmingInterval: null,
+  followingPlayer: null
 };
 
-// Aliases for Smart Resource Mining
 const BLOCK_ALIASES = {
   'diamond': ['diamond_ore', 'deepslate_diamond_ore', 'diamond_block'],
   'iron': ['iron_ore', 'deepslate_iron_ore', 'raw_iron_block'],
@@ -33,9 +33,7 @@ const BLOCK_ALIASES = {
   'dirt': ['dirt', 'grass_block']
 };
 
-/**
- * Smart Auto-Equip Tools & Weapons
- */
+// Tool and Weapon Switchers
 async function equipBestWeapon(bot) {
   const weapons = bot.inventory.items().filter(item => item.name.includes('sword') || item.name.includes('axe'));
   if (!weapons.length) return;
@@ -60,13 +58,86 @@ async function equipBestTool(bot, block) {
   }
 }
 
-/**
- * Auto-Harvest & Auto-Replant Crop Engine
- */
+// 4x4 Real House Builder
+async function executeHouseBuild(bot) {
+  const getBuildBlock = () => bot.inventory.items().find(i => 
+    i.name.includes('plank') || i.name.includes('cobble') || i.name.includes('stone') || i.name.includes('dirt')
+  );
+
+  if (!getBuildBlock()) {
+    return bot.chat("Ghar banane ke liye blocks (planks/cobble/dirt) inventory me nahi hain!");
+  }
+
+  bot.chat("4x4 Complete House banana shuru kar raha hoon...");
+  const start = bot.entity.position.floored().offset(1, 0, 1);
+
+  const placeList = [];
+
+  // Walls (3 Layers High)
+  for (let y = 0; y < 3; y++) {
+    for (let x = 0; x < 4; x++) {
+      for (let z = 0; z < 4; z++) {
+        if (x === 0 || x === 3 || z === 0 || z === 3) {
+          if (x === 1 && z === 0 && (y === 0 || y === 1)) continue; // Door passage
+          placeList.push(start.offset(x, y, z));
+        }
+      }
+    }
+  }
+
+  // Roof Layer
+  for (let x = 0; x < 4; x++) {
+    for (let z = 0; z < 4; z++) {
+      placeList.push(start.offset(x, 3, z));
+    }
+  }
+
+  for (const pos of placeList) {
+    const targetBlock = bot.blockAt(pos);
+    if (!targetBlock || targetBlock.name !== 'air') continue;
+
+    const blockItem = getBuildBlock();
+    if (!blockItem) {
+      bot.chat("Blocks khatam ho gaye! Thode aur blocks do.");
+      return;
+    }
+
+    try {
+      await bot.equip(blockItem, 'hand');
+      
+      // Move closer if too far
+      if (bot.entity.position.distanceTo(pos) > 4) {
+        await bot.pathfinder.goto(new goals.GoalNear(pos.x, pos.y, pos.z, 3)).catch(() => {});
+      }
+
+      // Check support blocks
+      const neighbors = [
+        pos.offset(0, -1, 0),
+        pos.offset(1, 0, 0),
+        pos.offset(-1, 0, 0),
+        pos.offset(0, 0, 1),
+        pos.offset(0, 0, -1)
+      ];
+
+      for (const n of neighbors) {
+        const refBlock = bot.blockAt(n);
+        if (refBlock && refBlock.name !== 'air') {
+          const faceVec = pos.minus(n);
+          await bot.lookAt(pos);
+          await bot.placeBlock(refBlock, faceVec).catch(() => {});
+          await bot.waitForTicks(3);
+          break;
+        }
+      }
+    } catch (e) {}
+  }
+  bot.chat("Complete Starter Base ban gaya!");
+}
+
+// Auto Farm Loop
 async function runFarmLoop(bot) {
   if (!botState.autoFarm) return;
   const mcData = require('minecraft-data')(bot.version);
-
   const cropNames = ['wheat', 'carrots', 'potatoes', 'beetroots'];
   const cropIds = cropNames.map(n => mcData.blocksByName[n]?.id).filter(Boolean);
 
@@ -82,12 +153,8 @@ async function runFarmLoop(bot) {
       await bot.collectBlock.collect(targets);
 
       for (const pos of matureCrops) {
-        const soilPos = pos.offset(0, -1, 0);
-        const soilBlock = bot.blockAt(soilPos);
-        const seedItem = bot.inventory.items().find(i => 
-          i.name.includes('seeds') || i.name === 'carrot' || i.name === 'potato'
-        );
-
+        const soilBlock = bot.blockAt(pos.offset(0, -1, 0));
+        const seedItem = bot.inventory.items().find(i => i.name.includes('seeds') || i.name === 'carrot' || i.name === 'potato');
         if (soilBlock && soilBlock.name === 'farmland' && seedItem) {
           await bot.equip(seedItem, 'hand');
           await bot.placeBlock(soilBlock, new Vec3(0, 1, 0)).catch(() => {});
@@ -98,57 +165,11 @@ async function runFarmLoop(bot) {
   }
 
   if (botState.autoFarm) {
-    botState.farmingInterval = setTimeout(() => runFarmLoop(bot), 5000);
+    botState.farmingInterval = setTimeout(() => runFarmLoop(bot), 4000);
   }
 }
 
-/**
- * Starter House Construction Script
- */
-async function executeHouseBuild(bot) {
-  const buildBlock = bot.inventory.items().find(i => 
-    i.name.includes('plank') || i.name.includes('cobble') || i.name.includes('stone') || i.name.includes('dirt')
-  );
-
-  if (!buildBlock) {
-    return bot.chat("Ghar banane ke liye blocks (planks/cobble/dirt) inventory me nahi hain!");
-  }
-
-  bot.chat("Starter House construct karna shuru kar raha hoon...");
-  const startPos = bot.entity.position.floored().offset(1, 0, 1);
-
-  try {
-    for (let y = 0; y < 2; y++) {
-      for (let x = 0; x < 3; x++) {
-        for (let z = 0; z < 3; z++) {
-          if (x === 0 || x === 2 || z === 0 || z === 2) {
-            if (x === 1 && z === 0) continue; // Door passage
-            
-            const targetPos = startPos.offset(x, y, z);
-            const currentBlock = bot.blockAt(targetPos);
-            
-            if (currentBlock && currentBlock.name === 'air') {
-              const referenceBlock = bot.blockAt(targetPos.offset(0, -1, 0));
-              if (referenceBlock && referenceBlock.name !== 'air') {
-                await bot.equip(buildBlock, 'hand');
-                await bot.lookAt(targetPos);
-                await bot.placeBlock(referenceBlock, new Vec3(0, 1, 0)).catch(() => {});
-                await bot.waitForTicks(4);
-              }
-            }
-          }
-        }
-      }
-    }
-    bot.chat("Starter House tayar ho gaya!");
-  } catch (err) {
-    bot.chat(`Building me issue: ${err.message}`);
-  }
-}
-
-/**
- * Web Dashboard & Live Inventory Server
- */
+// Web Server & Custom Inventory UI
 function webInventoryPlugin(bot, customOptions = {}) {
   const port = customOptions.port || process.env.PORT || 3000;
   const app = express();
@@ -162,85 +183,111 @@ function webInventoryPlugin(bot, customOptions = {}) {
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Nokar Agent - Control Dashboard</title>
+        <title>Nokar Bot - Gaming Control Center</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <script src="/socket.io/socket.io.js"></script>
         <style>
-          * { box-sizing: border-box; }
-          body { font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; display: flex; justify-content: center; }
-          .container { width: 100%; max-width: 600px; background: #1e293b; border-radius: 16px; padding: 20px; border: 1px solid #334155; }
-          .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 12px; margin-bottom: 16px; }
-          .title { font-size: 20px; font-weight: 700; color: #38bdf8; }
-          .status { font-size: 13px; background: #064e3b; color: #34d399; padding: 4px 10px; border-radius: 20px; }
-          .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
-          .stat-box { background: #0f172a; padding: 10px; border-radius: 8px; border: 1px solid #334155; text-align: center; }
-          .stat-val { font-size: 18px; font-weight: 700; color: #fbbf24; }
-          .stat-lbl { font-size: 12px; color: #94a3b8; }
-          .section-title { font-size: 13px; font-weight: 600; color: #94a3b8; margin: 12px 0 6px 0; }
-          .inv-grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 5px; background: #0f172a; padding: 10px; border-radius: 8px; border: 1px solid #334155; }
-          .slot { aspect-ratio: 1; background: #1e293b; border: 1px solid #475569; border-radius: 4px; display: flex; flex-direction: column; justify-content: center; align-items: center; position: relative; font-size: 9px; text-align: center; padding: 2px; }
-          .slot .name { font-size: 8px; line-height: 1; color: #e2e8f0; }
-          .slot .count { position: absolute; bottom: 1px; right: 2px; font-size: 9px; font-weight: 700; color: #38bdf8; }
-          .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 15px; }
-          button { background: #2563eb; border: none; color: white; padding: 10px; font-size: 13px; font-weight: 600; border-radius: 6px; cursor: pointer; }
-          button.farm-btn { background: #059669; }
-          button.drop-btn { background: #d97706; }
-          button.danger-btn { background: #dc2626; grid-column: span 2; }
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0b0f19; color: #e2e8f0; display: flex; justify-content: center; padding: 20px; }
+          .panel { width: 100%; max-width: 650px; background: #151d30; border-radius: 14px; border: 1px solid #24324f; padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); }
+          .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+          .title { font-size: 22px; font-weight: bold; color: #38bdf8; display: flex; align-items: center; gap: 8px; }
+          .badge { background: #059669; color: #fff; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+          
+          .meters { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+          .meter-card { background: #0b0f19; padding: 12px; border-radius: 8px; border: 1px solid #1e293b; text-align: center; }
+          .meter-val { font-size: 20px; font-weight: bold; }
+          .health-txt { color: #f43f5e; }
+          .food-txt { color: #fbbf24; }
+
+          .grid-title { font-size: 13px; text-transform: uppercase; color: #94a3b8; letter-spacing: 1px; margin: 16px 0 8px; }
+          .grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 6px; background: #0b0f19; padding: 12px; border-radius: 10px; border: 1px solid #1e293b; }
+          .slot { aspect-ratio: 1; background: #1e293b; border: 1px solid #334155; border-radius: 6px; position: relative; display: flex; align-items: center; justify-content: center; text-align: center; padding: 2px; }
+          .slot .item-name { font-size: 8.5px; color: #cbd5e1; word-break: break-all; line-height: 1; }
+          .slot .item-count { position: absolute; bottom: 2px; right: 3px; font-size: 11px; font-weight: 800; color: #38bdf8; }
+
+          .controls { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 24px; }
+          button { padding: 12px; border: none; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; color: white; transition: 0.15s; }
+          button:active { transform: scale(0.97); }
+          .btn-farm { background: #059669; }
+          .btn-eat { background: #d97706; }
+          .btn-build { background: #2563eb; }
+          .btn-drop { background: #475569; }
+          .btn-stop { background: #e11d48; grid-column: span 2; margin-top: 4px; }
         </style>
       </head>
       <body>
-        <div class="container">
-          <div class="header">
-            <div class="title">🤖 Nokar Inventory & Agent</div>
-            <div class="status">Online</div>
+        <div class="panel">
+          <div class="top-bar">
+            <div class="title">🤖 Nokar Web Control</div>
+            <div class="badge">Connected</div>
           </div>
-          <div class="stats">
-            <div class="stat-box"><div class="stat-val" id="botHealth">20 / 20</div><div class="stat-lbl">❤️ Health</div></div>
-            <div class="stat-box"><div class="stat-val" id="botFood">20 / 20</div><div class="stat-lbl">🍗 Food</div></div>
+
+          <div class="meters">
+            <div class="meter-card">
+              <div class="meter-val health-txt" id="hp">20 / 20</div>
+              <div style="font-size: 12px; color: #64748b;">❤️ Health</div>
+            </div>
+            <div class="meter-card">
+              <div class="meter-val food-txt" id="food">20 / 20</div>
+              <div style="font-size: 12px; color: #64748b;">🍖 Food</div>
+            </div>
           </div>
-          <div class="section-title">Main Inventory (27 Slots)</div>
-          <div class="inv-grid" id="mainGrid"></div>
-          <div class="section-title">Hotbar (9 Slots)</div>
-          <div class="inv-grid" id="hotbarGrid"></div>
-          <div class="btn-grid">
-            <button class="farm-btn" onclick="sendAction('toggle_farm')" id="farmBtn">🌾 Auto Farm</button>
-            <button onclick="sendAction('toggle_eat')">🍖 Auto Eat</button>
-            <button class="drop-btn" onclick="sendAction('dropall')">📦 Drop All</button>
-            <button onclick="sendAction('build_house')">🏠 Build House</button>
-            <button class="danger-btn" onclick="sendAction('stop')">🛑 Emergency Stop</button>
+
+          <div class="grid-title">Main Inventory</div>
+          <div class="grid" id="mainGrid"></div>
+
+          <div class="grid-title">Hotbar</div>
+          <div class="grid" id="hotbarGrid"></div>
+
+          <div class="controls">
+            <button class="btn-farm" onclick="send('toggle_farm')" id="farmBtn">🌾 Auto Farm: OFF</button>
+            <button class="btn-eat" onclick="send('toggle_eat')" id="eatBtn">🍖 Auto Eat: ON</button>
+            <button class="btn-build" onclick="send('build_house')">🏠 Build House</button>
+            <button class="btn-drop" onclick="send('dropall')">📦 Drop All</button>
+            <button class="btn-stop" onclick="send('stop')">🛑 Emergency Stop</button>
           </div>
         </div>
+
         <script>
           const socket = io();
-          function renderSlots() {
-            const main = document.getElementById('mainGrid');
-            const hotbar = document.getElementById('hotbarGrid');
-            main.innerHTML = ''; hotbar.innerHTML = '';
-            for (let i = 9; i <= 35; i++) main.innerHTML += '<div class="slot" id="slot-' + i + '"></div>';
-            for (let i = 36; i <= 44; i++) hotbar.innerHTML += '<div class="slot" id="slot-' + i + '"></div>';
-          }
-          renderSlots();
-          socket.on('sync', (data) => {
-            if (data.health !== undefined) document.getElementById('botHealth').innerText = Math.round(data.health) + ' / 20';
-            if (data.food !== undefined) document.getElementById('botFood').innerText = Math.round(data.food) + ' / 20';
+          let farmOn = false;
+          let eatOn = true;
+
+          const main = document.getElementById('mainGrid');
+          const hotbar = document.getElementById('hotbarGrid');
+
+          for (let i = 9; i <= 35; i++) main.innerHTML += '<div class="slot" id="s-' + i + '"></div>';
+          for (let i = 36; i <= 44; i++) hotbar.innerHTML += '<div class="slot" id="s-' + i + '"></div>';
+
+          socket.on('sync', data => {
+            if (data.hp !== undefined) document.getElementById('hp').innerText = Math.round(data.hp) + ' / 20';
+            if (data.food !== undefined) document.getElementById('food').innerText = Math.round(data.food) + ' / 20';
+
             for (let i = 9; i <= 44; i++) {
-              const el = document.getElementById('slot-' + i);
+              const el = document.getElementById('s-' + i);
               if (!el) continue;
-              const item = data.items.find(it => it.slot === i);
+              const item = data.items.find(x => x.slot === i);
               if (item) {
-                el.innerHTML = '<span class="name">' + item.name.replace(/_/g, ' ') + '</span>' + (item.count > 1 ? '<span class="count">' + item.count + '</span>' : '');
-                el.style.background = '#334155';
+                el.innerHTML = '<span class="item-name">' + item.name.replace(/_/g, ' ') + '</span>' + (item.count > 1 ? '<span class="item-count">' + item.count + '</span>' : '');
+                el.style.background = '#24324f';
               } else {
                 el.innerHTML = '';
                 el.style.background = '#1e293b';
               }
             }
           });
-          function sendAction(action) {
+
+          function send(act) {
             fetch('/api/action', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: action })
+              body: JSON.stringify({ action: act })
+            }).then(r => r.json()).then(d => {
+              if (act === 'toggle_farm') {
+                farmOn = d.farm;
+                document.getElementById('farmBtn').innerText = '🌾 Auto Farm: ' + (farmOn ? 'ON' : 'OFF');
+              }
             });
           }
         </script>
@@ -253,57 +300,51 @@ function webInventoryPlugin(bot, customOptions = {}) {
     const act = req.body.action;
     if (act === 'toggle_farm') {
       botState.autoFarm = !botState.autoFarm;
-      if (botState.autoFarm) {
-        runFarmLoop(bot);
-        bot.chat('Auto-Farm mode ON!');
-      } else {
-        clearTimeout(botState.farmingInterval);
-        bot.chat('Auto-Farm mode OFF!');
-      }
-      return res.json({ success: true, autoFarm: botState.autoFarm });
+      if (botState.autoFarm) runFarmLoop(bot);
+      else clearTimeout(botState.farmingInterval);
+      return res.json({ success: true, farm: botState.autoFarm });
     }
     if (act === 'toggle_eat') {
       botState.autoEat = !botState.autoEat;
       if (botState.autoEat) bot.autoEat.enable();
       else bot.autoEat.disable();
-      return res.json({ success: true, autoEat: botState.autoEat });
+      return res.json({ success: true, eat: botState.autoEat });
+    }
+    if (act === 'build_house') {
+      executeHouseBuild(bot);
     }
     if (act === 'dropall') {
-      const items = bot.inventory.items();
-      for (const item of items) { try { await bot.tossStack(item); } catch (e) {} }
-      bot.chat('Sari inventory drop kar di!');
+      for (const item of bot.inventory.items()) {
+        try { await bot.tossStack(item); } catch (e) {}
+      }
     }
     if (act === 'stop') {
+      botState.followingPlayer = null;
       bot.pathfinder.stop();
       bot.pvp.stop();
       bot.collectBlock.cancelTask();
       botState.autoFarm = false;
       clearTimeout(botState.farmingInterval);
-      bot.chat('Actions stopped!');
-    }
-    if (act === 'build_house') {
-      executeHouseBuild(bot);
+      bot.chat("Ruk gaya!");
     }
     res.json({ success: true });
   });
 
-  function broadcastBotState() {
-    const rawItems = bot.inventory.slots
+  function syncState() {
+    const items = bot.inventory.slots
       .map((item, index) => item ? { slot: index, name: item.name, count: item.count } : null)
       .filter(Boolean);
-    io.emit('sync', { health: bot.health, food: bot.food, items: rawItems });
+    io.emit('sync', { hp: bot.health, food: bot.food, items });
   }
 
-  io.on('connection', () => broadcastBotState());
-  bot.inventory.on('updateSlot', () => broadcastBotState());
-  bot.on('health', () => broadcastBotState());
+  io.on('connection', () => syncState());
+  bot.inventory.on('updateSlot', () => syncState());
+  bot.on('health', () => syncState());
 
-  server.listen(port, () => console.log(`[DASHBOARD READY] Web live on port ${port}`));
+  server.listen(port, () => console.log(`[DASHBOARD READY] Port ${port}`));
 }
 
-/**
- * Main Process Initialization & Movement Setup
- */
+// Bot Daemon
 if (require.main === module) {
   function launchBot() {
     const HOST_ENDPOINT = process.argv[2] || 'DG_LAND502.aternos.me';
@@ -325,13 +366,11 @@ if (require.main === module) {
     bot.loadPlugin(pvp);
 
     bot.once('spawn', () => {
-      console.log(`[AGENT JOINED] Bot ${bot.username} is active in game.`);
+      console.log(`[AGENT JOINED] ${bot.username} joined.`);
       try { webInventoryPlugin(bot, { port: WEB_PORT }); } catch (e) {}
 
       const mcData = require('minecraft-data')(bot.version);
       const defaultMove = new Movements(bot, mcData);
-
-      // Advanced Climbing & Jump Logic
       defaultMove.allowParkour = true;
       defaultMove.canDig = true;
       defaultMove.allow1by1towers = true;
@@ -340,17 +379,20 @@ if (require.main === module) {
       defaultMove.scaffoldingBlocks = [
         mcData.blocksByName.dirt?.id,
         mcData.blocksByName.cobblestone?.id,
-        mcData.blocksByName.oak_planks?.id,
-        mcData.blocksByName.stone?.id
+        mcData.blocksByName.oak_planks?.id
       ].filter(Boolean);
 
       bot.pathfinder.setMovements(defaultMove);
+      bot.autoEat.options = { priority: 'foodPoints', startAt: 14, bannedFood: ['rotten_flesh', 'spider_eye'] };
+    });
 
-      bot.autoEat.options = {
-        priority: 'foodPoints',
-        startAt: 14,
-        bannedFood: ['rotten_flesh', 'spider_eye', 'poisonous_potato', 'pufferfish']
-      };
+    // Real-Time Dynamic Following Loop
+    bot.on('physicsTick', () => {
+      if (!botState.followingPlayer) return;
+      const target = bot.players[botState.followingPlayer]?.entity;
+      if (target) {
+        bot.pathfinder.setGoal(new goals.GoalFollow(target, 2), true);
+      }
     });
 
     bot.on('chat', async (username, message) => {
@@ -359,25 +401,21 @@ if (require.main === module) {
       const cmd = args[0].toLowerCase();
       const mcData = require('minecraft-data')(bot.version);
 
-      // 1. Follow / Come
+      // Follow
       if (cmd === 'come' || cmd === 'follow') {
         const player = bot.players[username]?.entity;
+        botState.followingPlayer = username;
         if (player) {
-          bot.chat(`Aapke paas aa raha hoon @${username}!`);
-          bot.pathfinder.setGoal(new goals.GoalFollow(player, 1), true);
+          bot.chat(`Aapko follow kar raha hoon @${username}!`);
+          bot.pathfinder.setGoal(new goals.GoalFollow(player, 2), true);
         } else {
-          const nearestPlayer = bot.nearestEntity(e => e.type === 'player' && e.username === username);
-          if (nearestPlayer) {
-            bot.chat(`Tracking @${username}...`);
-            bot.pathfinder.setGoal(new goals.GoalFollow(nearestPlayer, 1), true);
-          } else {
-            bot.chat(`@${username} aap scan nahi ho rahe, thoda paas aao.`);
-          }
+          bot.chat(`Aapka location track kar raha hoon @${username}...`);
         }
       }
 
-      // 2. Stop
+      // Stop
       else if (cmd === 'stop') {
+        botState.followingPlayer = null;
         bot.pathfinder.stop();
         bot.pvp.stop();
         bot.collectBlock.cancelTask();
@@ -386,24 +424,12 @@ if (require.main === module) {
         bot.chat("Ruk gaya!");
       }
 
-      // 3. Farm
-      else if (cmd === 'farm') {
-        botState.autoFarm = !botState.autoFarm;
-        if (botState.autoFarm) {
-          bot.chat("Auto-Farm chalu!");
-          runFarmLoop(bot);
-        } else {
-          clearTimeout(botState.farmingInterval);
-          bot.chat("Auto-Farm band.");
-        }
-      }
-
-      // 4. House Builder
+      // Build House
       else if (cmd === 'build' && args[1] === 'house') {
         executeHouseBuild(bot);
       }
 
-      // 5. Mining & Resource Collection
+      // Collect Resources
       else if (cmd === 'collect' || cmd === 'mine') {
         let blockQuery = args[1]?.toLowerCase();
         let count = parseInt(args[2]) || 1;
@@ -415,50 +441,26 @@ if (require.main === module) {
         let targetNames = BLOCK_ALIASES[blockQuery] || [blockQuery];
         let targetIds = targetNames.map(name => mcData.blocksByName[name]?.id).filter(Boolean);
 
-        const foundPositions = bot.findBlocks({ matching: targetIds, maxDistance: 32, count: count });
-        if (!foundPositions.length) return bot.chat(`Aas-paas koi ${blockQuery} nahi mila.`);
+        const found = bot.findBlocks({ matching: targetIds, maxDistance: 32, count });
+        if (!found.length) return bot.chat(`Aas-paas ${blockQuery} nahi mila.`);
 
-        bot.chat(`${foundPositions.length} ${blockQuery} todne jaa raha hoon...`);
+        bot.chat(`${found.length} ${blockQuery} collect kar raha hoon...`);
         try {
-          const targets = foundPositions.map(pos => bot.blockAt(pos));
+          const targets = found.map(pos => bot.blockAt(pos));
           await equipBestTool(bot, targets[0]);
           await bot.collectBlock.collect(targets);
-          bot.chat("Mining complete!");
-        } catch (err) {
-          bot.chat(`Mining fail: ${err.message}`);
+          bot.chat("Collection done!");
+        } catch (e) {
+          bot.chat(`Collection error: ${e.message}`);
         }
       }
 
-      // 6. Combat / Kill
-      else if (cmd === 'kill' || cmd === 'attack') {
-        const targetName = args[1]?.toLowerCase();
-        if (!targetName) return bot.chat("Kisko marna hai? Example: kill zombie");
-        const target = bot.nearestEntity(e => 
-          (e.type === 'mob' && e.name?.toLowerCase().includes(targetName)) ||
-          (e.type === 'player' && e.username?.toLowerCase() === targetName)
-        );
-        if (!target) return bot.chat(`"${targetName}" aas-paas nahi mila.`);
-        await equipBestWeapon(bot);
-        bot.pvp.attack(target);
-      }
-
-      // 7. Drop Specific Item
-      else if (cmd === 'drop' && args[1]) {
-        const query = args[1].toLowerCase();
-        const count = parseInt(args[2]) || null;
-        const matchedItem = bot.inventory.items().find(i => i.name.toLowerCase().includes(query));
-        if (!matchedItem) return bot.chat(`Mere paas "${query}" nahi hai.`);
-
-        if (count) await bot.toss(matchedItem.type, null, count);
-        else await bot.tossStack(matchedItem);
-        bot.chat(`${matchedItem.name} drop kar diya.`);
-      }
-
-      // 8. Drop All Items
+      // Drop All
       else if (cmd === 'dropall') {
-        const items = bot.inventory.items();
-        for (const item of items) { try { await bot.tossStack(item); } catch (e) {} }
-        bot.chat("Saari inventory drop kar di!");
+        for (const item of bot.inventory.items()) {
+          try { await bot.tossStack(item); } catch (e) {}
+        }
+        bot.chat("Sari inventory drop kar di!");
       }
     });
 
