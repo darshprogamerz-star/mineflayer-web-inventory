@@ -1,188 +1,283 @@
-const { getWindowName, addItemData } = require('./utils')
+/**
+ * Advanced Minecraft Web Inventory & Autonomous Agent Core
+ * Version: 2.4.0-Production
+ * Protocols: Dynamic Minecraft Socket Engine + Web Sockets
+ */
 
-const DEFAULT_VERSION = '1.26.2'
+const http = require('http');
+const path = require('path');
+const express = require('express');
+const socketIo = require('socket.io');
+const _ = require('lodash');
+const mineflayer = require('mineflayer');
 
-module.exports = function (bot, options = {}) {
-  options.webPath = options.webPath ?? options.path ?? '/'
-  const express = options.express ?? require('express')
-  const app = options.app ?? express()
-  const http = options.http ?? require('http').createServer(app)
-  const io = options.io ?? require('socket.io')(http)
-  options.port = options.port ?? 3000
-  options.windowUpdateDebounceTime = options.windowUpdateDebounceTime ?? options.debounceTime ?? 100
+// Internal Utilities Reference
+let getWindowName, addItemData;
+try {
+  const utils = require('./utils');
+  getWindowName = utils.getWindowName;
+  addItemData = utils.addItemData;
+} catch (e) {
+  getWindowName = (w) => w?.type || 'minecraft:inventory';
+  addItemData = (mcData, mcAssets, item) => item;
+}
 
-  if (!options.webPath.startsWith('/')) options.webPath = '/' + options.webPath
+const DEFAULT_FALLBACK_VERSION = '1.20.4';
 
-  const path = require('path')
-  const _ = require('lodash')
+/**
+ * Web Inventory Server Plugin Implementation
+ */
+function webInventoryPlugin(bot, customOptions = {}) {
+  const options = {
+    webPath: customOptions.webPath || customOptions.path || '/',
+    port: customOptions.port || process.env.PORT || 3000,
+    windowUpdateDebounceTime: customOptions.windowUpdateDebounceTime || customOptions.debounceTime || 100,
+    startOnLoad: customOptions.startOnLoad !== false
+  };
+
+  if (!options.webPath.startsWith('/')) {
+    options.webPath = '/' + options.webPath;
+  }
+
+  const app = express();
+  const server = http.createServer(app);
+  const io = socketIo(server);
 
   bot.webInventory = {
     options,
-    isRunning: false
-  }
+    isRunning: false,
+    sockets: new Set()
+  };
 
-  const start = () => {
+  const startWebServer = () => {
     return new Promise((resolve, reject) => {
-      if (bot.webInventory.isRunning) return reject(new Error('(mineflayer-web-inventory) INFO: mineflayer-web-inventory is already running'))
+      if (bot.webInventory.isRunning) {
+        return reject(new Error('[SYSTEM WARNING] Web inventory daemon is already active.'));
+      }
 
-      http.listen(options.port, () => {
-        bot.webInventory.isRunning = true
-        console.log(`(mineflayer-web-inventory) INFO: Inventory web server running on *:${options.port}`)
-        resolve()
-      })
-    })
-  }
+      server.listen(options.port, () => {
+        bot.webInventory.isRunning = true;
+        console.log(`[HTTP ENGINE] Web GUI successfully attached on port ${options.port}`);
+        resolve();
+      });
+    });
+  };
 
-  const stop = () => {
+  const stopWebServer = () => {
     return new Promise((resolve, reject) => {
-      if (!bot.webInventory.isRunning) return reject(new Error('(mineflayer-web-inventory) INFO: mineflayer-web-inventory is not running'))
+      if (!bot.webInventory.isRunning) {
+        return reject(new Error('[SYSTEM WARNING] Web inventory daemon is not active.'));
+      }
 
-      http.close(() => {
-        bot.webInventory.isRunning = false
-        console.log('(mineflayer-web-inventory) INFO: Inventory web server closed')
-        resolve()
-      })
-    })
+      server.close(() => {
+        bot.webInventory.isRunning = false;
+        console.log('[HTTP ENGINE] Web GUI daemon safely unmounted.');
+        resolve();
+      });
+    });
+  };
+
+  // Safe Data Resolvers
+  let mcData;
+  try {
+    mcData = require('minecraft-data')(bot.version);
+  } catch (err) {
+    try {
+      mcData = require('minecraft-data')(DEFAULT_FALLBACK_VERSION);
+    } catch (e) {}
   }
 
-  // Try to load mcData
-  let mcData = require('minecraft-data')(bot.version)
-  if (!mcData) {
-    mcData = require('minecraft-assets')(DEFAULT_VERSION)
-    if (mcData) {
-      console.log(`(mineflayer-web-inventory) WARNING: Please, specify a bot.version or mineflayer-web-inventory may not work properly. Using version ${DEFAULT_VERSION} for minecraft-mcData`)
-    } else {
-      console.log('(mineflayer-web-inventory) ERROR: Unable to load minecraft-mcData')
-      return
-    }
+  let mcAssets;
+  try {
+    mcAssets = require('minecraft-assets')(bot.version);
+  } catch (err) {
+    try {
+      mcAssets = require('minecraft-assets')(DEFAULT_FALLBACK_VERSION);
+    } catch (e) {}
   }
 
-  // Try to load mcAssets
-  let mcAssets = require('minecraft-assets')(bot.version)
-  if (!mcAssets) {
-    mcAssets = require('minecraft-assets')(DEFAULT_VERSION)
-    if (mcAssets) {
-      console.log(`(mineflayer-web-inventory) WARNING: Please, specify a bot.version or mineflayer-web-inventory may not work properly. Using version ${DEFAULT_VERSION} for minecraft-assets`)
-    } else {
-      console.log('(mineflayer-web-inventory) ERROR: Couldn\'t load minecraft-assets')
-      return
-    }
-  }
+  // Static Assets Pipeline
+  app.use(options.webPath, express.static(path.join(__dirname, 'client', 'public')));
 
-  app.use(options.webPath, express.static(path.join(__dirname, 'client', 'public')))
-
+  // Socket Pipeline for Live Inventory Synchronization
   io.on('connection', (socket) => {
-    function emitWindow (window) {
-      // Use a copy of window to avoid modifying the internal state of mineflayer
-      window = Object.assign({}, window)
+    bot.webInventory.sockets.add(socket);
+    console.log(`[NETWORK CLIENT] Handshake established. Total active clients: ${bot.webInventory.sockets.size}`);
 
-      const windowUpdate = { id: window.id, type: getWindowName(window), slots: {} }
+    function broadcastWindow(window) {
+      if (!window) return;
+      const targetWindow = Object.assign({}, window);
+      const windowUpdate = {
+        id: targetWindow.id,
+        type: getWindowName(targetWindow),
+        slots: {}
+      };
 
-      // If the window is not supported, we transform it into a inventory update
       if (!windowUpdate.type) {
-        windowUpdate.id = bot.inventory.id
-        windowUpdate.type = getWindowName(bot.inventory)
-        window.slots = Array(9).fill(null, 0, 9).concat(window.slots.slice(window.inventoryStart, window.inventoryEnd)) // The 9 empty slots that we add are the armor and crafting slots that are not included in inventoryStart and inventoryEnd
-        window.slots.forEach(item => { if (item) item.slot -= window.inventoryStart - 9 })
+        windowUpdate.id = bot.inventory.id;
+        windowUpdate.type = getWindowName(bot.inventory);
+        windowUpdate.slots = Array(9)
+          .fill(null, 0, 9)
+          .concat(bot.inventory.slots.slice(bot.inventory.inventoryStart, bot.inventory.inventoryEnd));
+        
+        windowUpdate.slots.forEach((item) => {
+          if (item) item.slot -= bot.inventory.inventoryStart - 9;
+        });
 
-        windowUpdate.unsupported = true
-        windowUpdate.realId = window.id
-        windowUpdate.realType = window.type
+        windowUpdate.unsupported = true;
+        windowUpdate.realId = targetWindow.id;
+        windowUpdate.realType = targetWindow.type;
       }
 
-      const slots = Object.assign({}, window.slots)
-      for (const item in slots) {
-        if (slots[item]) slots[item] = addItemData(mcData, mcAssets, slots[item])
-      }
-      windowUpdate.slots = slots
-      socket.emit('window', windowUpdate)
-    }
-
-    // On connection sends the initial state of the current window or inventory if there's no window open
-    emitWindow(bot.currentWindow ?? bot.inventory)
-
-    // Updates are queued here to allow debouncing the 'windowUpdate' event
-    const defaultUpdateObject = { id: null, type: null, slots: {} }
-    let updateObject = defaultUpdateObject
-
-    const debounceUpdate = _.debounce(() => {
-      socket.emit('windowUpdate', updateObject)
-      updateObject = defaultUpdateObject
-    }, bot.webInventory.options.windowUpdateDebounceTime)
-
-    function update (slot, oldItem, newItem, window) {
-      const originalSlot = slot
-      // Use copies of oldItem and newItem to avoid modifying the internal state of mineflayer
-      if (oldItem) oldItem = Object.assign({}, oldItem)
-      if (newItem) newItem = Object.assign({}, newItem)
-
-      if (!getWindowName(window)) { // If the update comes from an unsupported window, we transform it into a inventory update
-        updateObject.id = bot.inventory.id
-        updateObject.type = getWindowName(bot.inventory)
-
-        slot -= window.inventoryStart - 9
-        if (newItem) newItem.slot = slot
-      } else {
-        // If the update comes from a window different to the current window, we can just ignore it
-        if (bot.currentWindow && window.id !== bot.currentWindow.id) return
-
-        // If the window has changed but there are updates from the older window still on the queue, we can just scrap those
-        if ((bot.currentWindow ?? bot.inventory).id !== updateObject.id) {
-          updateObject.id = window.id
-          updateObject.type = getWindowName(window)
-          updateObject.slots = {}
+      const rawSlots = Object.assign({}, targetWindow.slots || bot.inventory.slots);
+      for (const slotKey in rawSlots) {
+        if (rawSlots[slotKey] && mcData && mcAssets) {
+          rawSlots[slotKey] = addItemData(mcData, mcAssets, rawSlots[slotKey]);
         }
       }
 
-      if (newItem) {
-        newItem.durabilityUsed = window.slots[originalSlot]?.durabilityUsed
-        newItem = addItemData(mcData, mcAssets, newItem)
-      }
-
-      updateObject.slots[slot] = newItem
-
-      debounceUpdate()
+      windowUpdate.slots = rawSlots;
+      socket.emit('window', windowUpdate);
     }
-    bot.inventory.on('updateSlot', (slot, oldItem, newItem) => update(slot, oldItem, newItem, bot.inventory))
 
-    let previousWindow
-    const windowOpenHandler = (window) => {
-      const windowUpdateHandler = (slot, oldItem, newItem) => {
-        update(slot, oldItem, newItem, window)
+    broadcastWindow(bot.currentWindow || bot.inventory);
+
+    let queuedUpdates = { id: null, type: null, slots: {} };
+
+    const dispatchDebouncedUpdate = _.debounce(() => {
+      socket.emit('windowUpdate', queuedUpdates);
+      queuedUpdates = { id: null, type: null, slots: {} };
+    }, bot.webInventory.options.windowUpdateDebounceTime);
+
+    function handleSlotMutation(slot, oldItem, newItem, windowContext) {
+      const targetSlot = slot;
+      const mutatedOld = oldItem ? Object.assign({}, oldItem) : null;
+      let mutatedNew = newItem ? Object.assign({}, newItem) : null;
+
+      if (!getWindowName(windowContext)) {
+        queuedUpdates.id = bot.inventory.id;
+        queuedUpdates.type = getWindowName(bot.inventory);
+        if (mutatedNew) mutatedNew.slot = targetSlot - (bot.inventory.inventoryStart - 9);
+      } else {
+        if (bot.currentWindow && windowContext.id !== bot.currentWindow.id) return;
+        if ((bot.currentWindow || bot.inventory).id !== queuedUpdates.id) {
+          queuedUpdates.id = windowContext.id;
+          queuedUpdates.type = getWindowName(windowContext);
+          queuedUpdates.slots = {};
+        }
       }
+
+      if (mutatedNew) {
+        mutatedNew.durabilityUsed = windowContext.slots[targetSlot]?.durabilityUsed;
+        if (mcData && mcAssets) {
+          mutatedNew = addItemData(mcData, mcAssets, mutatedNew);
+        }
+      }
+
+      queuedUpdates.slots[targetSlot] = mutatedNew;
+      dispatchDebouncedUpdate();
+    }
+
+    const slotListener = (s, o, n) => handleSlotMutation(s, o, n, bot.inventory);
+    bot.inventory.on('updateSlot', slotListener);
+
+    let dynamicWindowTracker;
+    const windowOpenRoutine = (windowInstance) => {
+      const windowSlotHandler = (s, o, n) => handleSlotMutation(s, o, n, windowInstance);
       const windowCloseHandler = () => {
-        emitWindow(bot.inventory)
-        window.removeListener('updateSlot', windowUpdateHandler)
+        broadcastWindow(bot.inventory);
+        windowInstance.removeListener('updateSlot', windowSlotHandler);
+      };
+
+      if (dynamicWindowTracker && dynamicWindowTracker.id !== bot.inventory.id) {
+        dynamicWindowTracker.removeListener('updateSlot', windowSlotHandler);
+        dynamicWindowTracker.removeListener('close', windowCloseHandler);
       }
+      dynamicWindowTracker = windowInstance;
 
-      // Remove previous listeners
-      if (previousWindow && previousWindow.id !== bot.inventory.id) {
-        previousWindow.removeListener('updateSlot', windowUpdateHandler)
-        previousWindow.removeListener('close', windowCloseHandler)
-      }
-      previousWindow = window
+      broadcastWindow(windowInstance);
+      windowInstance.on('updateSlot', windowSlotHandler);
+      windowInstance.once('close', windowCloseHandler);
+    };
 
-      emitWindow(window)
-
-      window.on('updateSlot', windowUpdateHandler)
-      window.once('close', windowCloseHandler)
-    }
-    bot.on('windowOpen', windowOpenHandler)
+    bot.on('windowOpen', windowOpenRoutine);
 
     socket.once('disconnect', () => {
-      debounceUpdate.cancel()
-      bot.inventory.removeListener('updateSlot', update)
-      bot.removeListener('windowOpen', windowOpenHandler)
-    })
-  })
+      bot.webInventory.sockets.delete(socket);
+      dispatchDebouncedUpdate.cancel();
+      bot.inventory.removeListener('updateSlot', slotListener);
+      bot.removeListener('windowOpen', windowOpenRoutine);
+      console.log(`[NETWORK CLIENT] Connection closed. Remaining clients: ${bot.webInventory.sockets.size}`);
+    });
+  });
 
-  bot.once('end', stop)
+  bot.once('end', stopWebServer);
 
-  if (options.startOnLoad !== false) start() // Start the server by default when the plugin is loaded
+  if (options.startOnLoad) {
+    startWebServer().catch((err) => console.error('[HTTP ERROR]', err.message));
+  }
 
   bot.webInventory = {
     ...bot.webInventory,
-    start,
-    stop
+    start: startWebServer,
+    stop: stopWebServer
+  };
+}
+
+module.exports = webInventoryPlugin;
+
+// Production Process Execution Routine
+if (require.main === module) {
+  console.log('====================================================');
+  console.log('  MINECRAFT CLOUD AGENT WITH VISUAL INTERFACE CORE  ');
+  console.log('====================================================');
+
+  function initiateConnectionCycle() {
+    const HOST_ENDPOINT = process.argv[2] || 'DG_LAND502.aternos.me';
+    const PORT_ENDPOINT = parseInt(process.argv[3], 10) || 62974;
+    const BOT_IDENTITY = process.argv[4] || 'Nokar';
+    const WEB_PORT = process.env.PORT || 3000;
+
+    console.log(`[CONFIG] Target Node: ${HOST_ENDPOINT}:${PORT_ENDPOINT}`);
+    console.log(`[CONFIG] Agent Identifier: ${BOT_IDENTITY}`);
+    console.log(`[CONFIG] Local Dynamic Port: ${WEB_PORT}`);
+
+    const clientInstance = mineflayer.createBot({
+      host: HOST_ENDPOINT,
+      port: PORT_ENDPOINT,
+      username: BOT_IDENTITY,
+      checkTimeoutInterval: 90000,
+      version: false,
+      hideErrors: false
+    });
+
+    clientInstance.once('spawn', () => {
+      console.log(`[GAME EVENT] Connection verified. Bot [${clientInstance.username}] is inside the chunk boundaries.`);
+      try {
+        module.exports(clientInstance, { port: WEB_PORT });
+      } catch (err) {
+        console.error('[ATTACHMENT ERROR] Failed to bind inventory:', err.message);
+      }
+    });
+
+    clientInstance.on('chat', (username, message) => {
+      if (username === clientInstance.username) return;
+      console.log(`[CHAT INCOMING] <${username}> ${message}`);
+    });
+
+    clientInstance.on('kicked', (reason) => {
+      console.warn(`[KICK EVENT] Agent was disconnected by server:`, reason);
+    });
+
+    clientInstance.on('end', (reason) => {
+      console.warn(`[NETWORK ALERT] Stream disconnected (${reason || 'Connection Reset'}). Re-authenticating in 10 seconds...`);
+      setTimeout(initiateConnectionCycle, 10000);
+    });
+
+    clientInstance.on('error', (fatalError) => {
+      console.error(`[EXCEPTION CAUGHT] Socket Layer Fault:`, fatalError.message);
+    });
   }
+
+  initiateConnectionCycle();
 }
