@@ -1,6 +1,6 @@
 const { getWindowName, addItemData } = require('./utils')
 
-const DEFAULT_VERSION = '1.18'
+const DEFAULT_VERSION = '1.26.2'
 
 module.exports = function (bot, options = {}) {
   options.webPath = options.webPath ?? options.path ?? '/'
