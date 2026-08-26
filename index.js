@@ -1,6 +1,6 @@
 /**
  * Master Autonomous Minecraft Companion: Web Dashboard + Advanced Pathing & Builder
- * Version: 5.0.0-Ultimate
+ * Version: 5.1.0-FixedVersion
  */
 
 const http = require('http');
@@ -122,7 +122,7 @@ async function executeHouseBuild(bot) {
       for (let x = 0; x < 3; x++) {
         for (let z = 0; z < 3; z++) {
           if (x === 0 || x === 2 || z === 0 || z === 2) {
-            if (x === 1 && z === 0) continue; // Entryway
+            if (x === 1 && z === 0) continue; // Door passage
             
             const targetPos = startPos.offset(x, y, z);
             const currentBlock = bot.blockAt(targetPos);
@@ -315,7 +315,8 @@ if (require.main === module) {
       host: HOST_ENDPOINT,
       port: PORT_ENDPOINT,
       username: BOT_IDENTITY,
-      checkTimeoutInterval: 120000
+      checkTimeoutInterval: 120000,
+      version: '1.20.4'
     });
 
     bot.loadPlugin(pathfinder);
@@ -330,12 +331,12 @@ if (require.main === module) {
       const mcData = require('minecraft-data')(bot.version);
       const defaultMove = new Movements(bot, mcData);
 
-      // --- ADVANCED CLIMBING & JUMP LOGIC ---
+      // Advanced Climbing & Jump Logic
       defaultMove.allowParkour = true;
       defaultMove.canDig = true;
-      defaultMove.allow1by1towers = true;       // Unchi jagah par block place karke chadh sakega
-      defaultMove.allowFreeMotion = true;       // Jump calculations enable
-      defaultMove.maxDropDown = 4;              // 4 blocks drop safely
+      defaultMove.allow1by1towers = true;
+      defaultMove.allowFreeMotion = true;
+      defaultMove.maxDropDown = 4;
       defaultMove.scaffoldingBlocks = [
         mcData.blocksByName.dirt?.id,
         mcData.blocksByName.cobblestone?.id,
