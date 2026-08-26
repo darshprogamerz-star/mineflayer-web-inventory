@@ -1,16 +1,11 @@
 {
   "name": "mineflayer-web-inventory",
-  "version": "1.8.6",
-  "description": "Web based viewer for your mineflayer bot's inventory",
+  "version": "2.0.0",
+  "description": "Smart Minecraft Companion & Web Inventory Agent",
   "main": "index.js",
   "scripts": {
-    "install": "cd client && npm install",
-    "test": "npm run lint && mocha",
-    "lint": "standard",
-    "clean": "rm -rf test/server/ test/server.jar versions/"
+    "start": "node index.js"
   },
-  "author": "imharvol <imharvol@gmail.com> (https://imharvol.com/)",
-  "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",
     "lodash": "^4.17.21",
@@ -25,17 +20,5 @@
     "prismarine-windows": "^2.4.1",
     "socket.io": "^4.7.2",
     "vec3": "^0.1.7"
-  },
-  "devDependencies": {
-    "minecraft-wrap": "^1.6.0",
-    "mocha": "^10.4.0",
-    "open": "^8.2.1",
-    "socket.io-client": "^4.7.5",
-    "standard": "^17.1.2"
-  },
-  "repository": "https://github.com/ImHarvol/mineflayer-web-inventory.git",
-  "keywords": [
-    "mineflayer",
-    "minecraft"
-  ]
+  }
 }
