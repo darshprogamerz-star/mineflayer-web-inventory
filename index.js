@@ -1,7 +1,6 @@
 /**
  * Advanced Minecraft Web Inventory & Autonomous Agent Core
- * Version: 2.4.0-Production
- * Protocols: Dynamic Minecraft Socket Engine + Web Sockets
+ * Version: 2.5.0-Production (With Smart Commands)
  */
 
 const http = require('http');
@@ -10,6 +9,12 @@ const express = require('express');
 const socketIo = require('socket.io');
 const _ = require('lodash');
 const mineflayer = require('mineflayer');
+
+// Smart Plugins Load
+const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
+const collectBlock = require('mineflayer-collectblock').plugin;
+const autoEat = require('mineflayer-auto-eat').plugin;
+const pvp = require('mineflayer-pvp').plugin;
 
 // Internal Utilities Reference
 let getWindowName, addItemData;
@@ -35,29 +40,20 @@ function webInventoryPlugin(bot, customOptions = {}) {
     startOnLoad: customOptions.startOnLoad !== false
   };
 
-  if (!options.webPath.startsWith('/')) {
-    options.webPath = '/' + options.webPath;
-  }
+  if (!options.webPath.startsWith('/')) options.webPath = '/' + options.webPath;
 
   const app = express();
   const server = http.createServer(app);
   const io = socketIo(server);
 
-  bot.webInventory = {
-    options,
-    isRunning: false,
-    sockets: new Set()
-  };
+  bot.webInventory = { options, isRunning: false, sockets: new Set() };
 
   const startWebServer = () => {
     return new Promise((resolve, reject) => {
-      if (bot.webInventory.isRunning) {
-        return reject(new Error('[SYSTEM WARNING] Web inventory daemon is already active.'));
-      }
-
+      if (bot.webInventory.isRunning) return reject(new Error('Web inventory already active.'));
       server.listen(options.port, () => {
         bot.webInventory.isRunning = true;
-        console.log(`[HTTP ENGINE] Web GUI successfully attached on port ${options.port}`);
+        console.log(`[HTTP ENGINE] Web GUI attached on port ${options.port}`);
         resolve();
       });
     });
@@ -65,65 +61,33 @@ function webInventoryPlugin(bot, customOptions = {}) {
 
   const stopWebServer = () => {
     return new Promise((resolve, reject) => {
-      if (!bot.webInventory.isRunning) {
-        return reject(new Error('[SYSTEM WARNING] Web inventory daemon is not active.'));
-      }
-
+      if (!bot.webInventory.isRunning) return reject(new Error('Web inventory not active.'));
       server.close(() => {
         bot.webInventory.isRunning = false;
-        console.log('[HTTP ENGINE] Web GUI daemon safely unmounted.');
         resolve();
       });
     });
   };
 
-  // Safe Data Resolvers
-  let mcData;
-  try {
-    mcData = require('minecraft-data')(bot.version);
-  } catch (err) {
-    try {
-      mcData = require('minecraft-data')(DEFAULT_FALLBACK_VERSION);
-    } catch (e) {}
-  }
+  let mcData, mcAssets;
+  try { mcData = require('minecraft-data')(bot.version); } catch (e) { mcData = require('minecraft-data')(DEFAULT_FALLBACK_VERSION); }
+  try { mcAssets = require('minecraft-assets')(bot.version); } catch (e) { mcAssets = require('minecraft-assets')(DEFAULT_FALLBACK_VERSION); }
 
-  let mcAssets;
-  try {
-    mcAssets = require('minecraft-assets')(bot.version);
-  } catch (err) {
-    try {
-      mcAssets = require('minecraft-assets')(DEFAULT_FALLBACK_VERSION);
-    } catch (e) {}
-  }
-
-  // Static Assets Pipeline
   app.use(options.webPath, express.static(path.join(__dirname, 'client', 'public')));
 
-  // Socket Pipeline for Live Inventory Synchronization
   io.on('connection', (socket) => {
     bot.webInventory.sockets.add(socket);
-    console.log(`[NETWORK CLIENT] Handshake established. Total active clients: ${bot.webInventory.sockets.size}`);
 
     function broadcastWindow(window) {
       if (!window) return;
       const targetWindow = Object.assign({}, window);
-      const windowUpdate = {
-        id: targetWindow.id,
-        type: getWindowName(targetWindow),
-        slots: {}
-      };
+      const windowUpdate = { id: targetWindow.id, type: getWindowName(targetWindow), slots: {} };
 
       if (!windowUpdate.type) {
         windowUpdate.id = bot.inventory.id;
         windowUpdate.type = getWindowName(bot.inventory);
-        windowUpdate.slots = Array(9)
-          .fill(null, 0, 9)
-          .concat(bot.inventory.slots.slice(bot.inventory.inventoryStart, bot.inventory.inventoryEnd));
-        
-        windowUpdate.slots.forEach((item) => {
-          if (item) item.slot -= bot.inventory.inventoryStart - 9;
-        });
-
+        windowUpdate.slots = Array(9).fill(null, 0, 9).concat(bot.inventory.slots.slice(bot.inventory.inventoryStart, bot.inventory.inventoryEnd));
+        windowUpdate.slots.forEach((item) => { if (item) item.slot -= bot.inventory.inventoryStart - 9; });
         windowUpdate.unsupported = true;
         windowUpdate.realId = targetWindow.id;
         windowUpdate.realType = targetWindow.type;
@@ -131,19 +95,14 @@ function webInventoryPlugin(bot, customOptions = {}) {
 
       const rawSlots = Object.assign({}, targetWindow.slots || bot.inventory.slots);
       for (const slotKey in rawSlots) {
-        if (rawSlots[slotKey] && mcData && mcAssets) {
-          rawSlots[slotKey] = addItemData(mcData, mcAssets, rawSlots[slotKey]);
-        }
+        if (rawSlots[slotKey] && mcData && mcAssets) rawSlots[slotKey] = addItemData(mcData, mcAssets, rawSlots[slotKey]);
       }
-
       windowUpdate.slots = rawSlots;
       socket.emit('window', windowUpdate);
     }
 
     broadcastWindow(bot.currentWindow || bot.inventory);
-
     let queuedUpdates = { id: null, type: null, slots: {} };
-
     const dispatchDebouncedUpdate = _.debounce(() => {
       socket.emit('windowUpdate', queuedUpdates);
       queuedUpdates = { id: null, type: null, slots: {} };
@@ -151,7 +110,6 @@ function webInventoryPlugin(bot, customOptions = {}) {
 
     function handleSlotMutation(slot, oldItem, newItem, windowContext) {
       const targetSlot = slot;
-      const mutatedOld = oldItem ? Object.assign({}, oldItem) : null;
       let mutatedNew = newItem ? Object.assign({}, newItem) : null;
 
       if (!getWindowName(windowContext)) {
@@ -169,11 +127,8 @@ function webInventoryPlugin(bot, customOptions = {}) {
 
       if (mutatedNew) {
         mutatedNew.durabilityUsed = windowContext.slots[targetSlot]?.durabilityUsed;
-        if (mcData && mcAssets) {
-          mutatedNew = addItemData(mcData, mcAssets, mutatedNew);
-        }
+        if (mcData && mcAssets) mutatedNew = addItemData(mcData, mcAssets, mutatedNew);
       }
-
       queuedUpdates.slots[targetSlot] = mutatedNew;
       dispatchDebouncedUpdate();
     }
@@ -188,13 +143,11 @@ function webInventoryPlugin(bot, customOptions = {}) {
         broadcastWindow(bot.inventory);
         windowInstance.removeListener('updateSlot', windowSlotHandler);
       };
-
       if (dynamicWindowTracker && dynamicWindowTracker.id !== bot.inventory.id) {
         dynamicWindowTracker.removeListener('updateSlot', windowSlotHandler);
         dynamicWindowTracker.removeListener('close', windowCloseHandler);
       }
       dynamicWindowTracker = windowInstance;
-
       broadcastWindow(windowInstance);
       windowInstance.on('updateSlot', windowSlotHandler);
       windowInstance.once('close', windowCloseHandler);
@@ -207,76 +160,107 @@ function webInventoryPlugin(bot, customOptions = {}) {
       dispatchDebouncedUpdate.cancel();
       bot.inventory.removeListener('updateSlot', slotListener);
       bot.removeListener('windowOpen', windowOpenRoutine);
-      console.log(`[NETWORK CLIENT] Connection closed. Remaining clients: ${bot.webInventory.sockets.size}`);
     });
   });
 
   bot.once('end', stopWebServer);
-
-  if (options.startOnLoad) {
-    startWebServer().catch((err) => console.error('[HTTP ERROR]', err.message));
-  }
-
-  bot.webInventory = {
-    ...bot.webInventory,
-    start: startWebServer,
-    stop: stopWebServer
-  };
+  if (options.startOnLoad) startWebServer().catch(() => {});
+  bot.webInventory = { ...bot.webInventory, start: startWebServer, stop: stopWebServer };
 }
 
 module.exports = webInventoryPlugin;
 
 // Production Process Execution Routine
 if (require.main === module) {
-  console.log('====================================================');
-  console.log('  MINECRAFT CLOUD AGENT WITH VISUAL INTERFACE CORE  ');
-  console.log('====================================================');
-
   function initiateConnectionCycle() {
     const HOST_ENDPOINT = process.argv[2] || 'DG_LAND502.aternos.me';
     const PORT_ENDPOINT = parseInt(process.argv[3], 10) || 62974;
     const BOT_IDENTITY = process.argv[4] || 'Nokar';
     const WEB_PORT = process.env.PORT || 3000;
 
-    console.log(`[CONFIG] Target Node: ${HOST_ENDPOINT}:${PORT_ENDPOINT}`);
-    console.log(`[CONFIG] Agent Identifier: ${BOT_IDENTITY}`);
-    console.log(`[CONFIG] Local Dynamic Port: ${WEB_PORT}`);
-
     const clientInstance = mineflayer.createBot({
       host: HOST_ENDPOINT,
       port: PORT_ENDPOINT,
       username: BOT_IDENTITY,
       checkTimeoutInterval: 90000,
-      version: false,
-      hideErrors: false
+      version: false
     });
 
+    // Load Plugins
+    clientInstance.loadPlugin(pathfinder);
+    clientInstance.loadPlugin(collectBlock);
+    clientInstance.loadPlugin(autoEat);
+    clientInstance.loadPlugin(pvp);
+
     clientInstance.once('spawn', () => {
-      console.log(`[GAME EVENT] Connection verified. Bot [${clientInstance.username}] is inside the chunk boundaries.`);
-      try {
-        module.exports(clientInstance, { port: WEB_PORT });
-      } catch (err) {
-        console.error('[ATTACHMENT ERROR] Failed to bind inventory:', err.message);
+      console.log(`[GAME EVENT] Bot [${clientInstance.username}] joined!`);
+      try { module.exports(clientInstance, { port: WEB_PORT }); } catch (e) {}
+
+      // Setup Movement & Physics
+      const mcData = require('minecraft-data')(clientInstance.version);
+      const defaultMove = new Movements(clientInstance, mcData);
+      defaultMove.allowParkour = true;
+      defaultMove.canDig = true;
+      clientInstance.pathfinder.setMovements(defaultMove);
+
+      // Setup Auto-Eat
+      clientInstance.autoEat.options = { priority: 'foodPoints', startAt: 14, bannedFood: ['rotten_flesh', 'spider_eye'] };
+    });
+
+    // Chat Command Engine
+    clientInstance.on('chat', async (username, message) => {
+      if (username === clientInstance.username) return;
+      const args = message.split(' ');
+      const cmd = args[0].toLowerCase();
+      const mcData = require('minecraft-data')(clientInstance.version);
+
+      if (cmd === 'come') {
+        const target = clientInstance.players[username]?.entity;
+        if (!target) return clientInstance.chat("Mai aapko scan nahi kar pa raha!");
+        clientInstance.chat("Aapke peeche aa raha hoon...");
+        clientInstance.pathfinder.setGoal(new goals.GoalFollow(target, 2), true);
+      } 
+      else if (cmd === 'stop') {
+        clientInstance.pathfinder.stop();
+        clientInstance.pvp.stop();
+        clientInstance.collectBlock.cancelTask();
+        clientInstance.chat("Saare task stop kar diye.");
+      }
+      else if (cmd === 'kill' && args[1]) {
+        const targetEntity = clientInstance.nearestEntity(e => 
+          (e.type === 'mob' && e.name?.toLowerCase().includes(args[1].toLowerCase())) ||
+          (e.type === 'player' && e.username?.toLowerCase() === args[1].toLowerCase())
+        );
+        if (!targetEntity) return clientInstance.chat(`${args[1]} nahi mila.`);
+        clientInstance.chat(`Target ${args[1]} locked! Attack kar raha hoon.`);
+        clientInstance.pvp.attack(targetEntity);
+      }
+      else if (cmd === 'collect' && args[1]) {
+        const blockName = args[1];
+        const count = parseInt(args[2]) || 1;
+        const blockType = mcData.blocksByName[blockName];
+
+        if (!blockType) return clientInstance.chat(`${blockName} game me exist nahi karta.`);
+        const foundBlocks = clientInstance.findBlocks({ matching: blockType.id, maxDistance: 64, count: count });
+
+        if (!foundBlocks.length) return clientInstance.chat(`${blockName} aas-paas nahi mila.`);
+        clientInstance.chat(`${foundBlocks.length} ${blockName} todne jaa raha hoon...`);
+        try {
+          const targets = foundBlocks.map(pos => clientInstance.blockAt(pos));
+          await clientInstance.collectBlock.collect(targets);
+          clientInstance.chat("Collection complete!");
+        } catch (e) {
+          clientInstance.chat(`Mining fail: ${e.message}`);
+        }
       }
     });
 
-    clientInstance.on('chat', (username, message) => {
-      if (username === clientInstance.username) return;
-      console.log(`[CHAT INCOMING] <${username}> ${message}`);
-    });
-
-    clientInstance.on('kicked', (reason) => {
-      console.warn(`[KICK EVENT] Agent was disconnected by server:`, reason);
-    });
-
-    clientInstance.on('end', (reason) => {
-      console.warn(`[NETWORK ALERT] Stream disconnected (${reason || 'Connection Reset'}). Re-authenticating in 10 seconds...`);
+    clientInstance.on('end', () => {
+      console.warn(`[NETWORK ALERT] Disconnected. Re-authenticating in 10s...`);
       setTimeout(initiateConnectionCycle, 10000);
     });
 
-    clientInstance.on('error', (fatalError) => {
-      console.error(`[EXCEPTION CAUGHT] Socket Layer Fault:`, fatalError.message);
-    });
+    clientInstance.on('error', (err) => console.error(`[ERROR]`, err.message));
   }
 
   initiateConnectionCycle();
