@@ -1,6 +1,6 @@
 /**
  * Master Minecraft Companion: Web Control Center + Auto-Farm + Builder + Inventory
- * Version: 4.0.0-Ultimate
+ * Version: 4.1.0-Production
  */
 
 const http = require('http');
@@ -30,14 +30,14 @@ try {
 
 const DEFAULT_FALLBACK_VERSION = '1.20.4';
 
-// Bot State Control flags
+// Bot State Control Flags
 const botState = {
   autoEat: true,
   autoFarm: false,
   farmingInterval: null
 };
 
-// Aliases for smart mining
+// Aliases for Smart Mining
 const BLOCK_ALIASES = {
   'diamond': ['diamond_ore', 'deepslate_diamond_ore', 'diamond_block'],
   'iron': ['iron_ore', 'deepslate_iron_ore', 'raw_iron_block'],
@@ -50,7 +50,7 @@ const BLOCK_ALIASES = {
 };
 
 /**
- * Auto-Equip Engine
+ * Auto Weapon & Tool Equipment
  */
 async function equipBestWeapon(bot) {
   const weapons = bot.inventory.items().filter(item => item.name.includes('sword') || item.name.includes('axe'));
@@ -67,7 +67,7 @@ async function equipBestTool(bot, block) {
   if (block.name.includes('ore') || block.name.includes('stone') || block.name.includes('cobble')) type = 'pickaxe';
   else if (block.name.includes('log') || block.name.includes('wood')) type = 'axe';
   else if (block.name.includes('dirt') || block.name.includes('sand')) type = 'shovel';
-  else if (block.name.includes('wheat') || block.name.includes('crops') || block.name.includes('carrots') || block.name.includes('potatoes')) type = 'hoe';
+  else if (block.name.includes('wheat') || block.name.includes('carrots') || block.name.includes('potatoes')) type = 'hoe';
   if (!type) return;
 
   const tools = items.filter(i => i.name.includes(type));
@@ -81,18 +81,14 @@ async function equipBestTool(bot, block) {
  */
 async function runFarmLoop(bot) {
   if (!botState.autoFarm) return;
-  const mcData = require('minecraft-data')(bot.version);
+  let mcData;
+  try { mcData = require('minecraft-data')(bot.version); } catch(e) { mcData = require('minecraft-data')(DEFAULT_FALLBACK_VERSION); }
 
-  // Mature crop block IDs
   const cropNames = ['wheat', 'carrots', 'potatoes', 'beetroots'];
   const cropIds = cropNames.map(n => mcData.blocksByName[n]?.id).filter(Boolean);
 
   const matureCrops = bot.findBlocks({
-    matching: (block) => {
-      if (!cropIds.includes(block.type)) return false;
-      // In Minecraft metadata 7 = fully grown for wheat/carrots/potatoes
-      return block.metadata === 7;
-    },
+    matching: (block) => cropIds.includes(block.type) && block.metadata === 7,
     maxDistance: 32,
     count: 5
   });
@@ -102,7 +98,6 @@ async function runFarmLoop(bot) {
       const targets = matureCrops.map(pos => bot.blockAt(pos));
       await bot.collectBlock.collect(targets);
 
-      // Replanting seeds
       for (const pos of matureCrops) {
         const soilPos = pos.offset(0, -1, 0);
         const soilBlock = bot.blockAt(soilPos);
@@ -116,19 +111,16 @@ async function runFarmLoop(bot) {
           await bot.waitForTicks(2);
         }
       }
-    } catch (err) {
-      // Quiet fail during loop to continue
-    }
+    } catch (err) {}
   }
 
-  // Repeat cycle every 5 seconds if active
   if (botState.autoFarm) {
     botState.farmingInterval = setTimeout(() => runFarmLoop(bot), 5000);
   }
 }
 
 /**
- * Web Control Panel & Socket Server
+ * Web Control Panel & Web Inventory Server
  */
 function webInventoryPlugin(bot, customOptions = {}) {
   const options = {
@@ -144,7 +136,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
 
   bot.webInventory = { options, isRunning: false, sockets: new Set() };
 
-  // Control Center Web Page
+  // Web Control Panel
   app.get('/panel', (req, res) => {
     res.send(`
       <!DOCTYPE html>
@@ -215,7 +207,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
     `);
   });
 
-  // API Endpoint for Buttons
+  // REST API Endpoints
   app.use(express.json());
   app.post('/api/action', async (req, res) => {
     const act = req.body.action;
@@ -234,11 +226,8 @@ function webInventoryPlugin(bot, customOptions = {}) {
 
     if (act === 'toggle_eat') {
       botState.autoEat = !botState.autoEat;
-      if (botState.autoEat) {
-        bot.autoEat.enable();
-      } else {
-        bot.autoEat.disable();
-      }
+      if (botState.autoEat) bot.autoEat.enable();
+      else bot.autoEat.disable();
       return res.json({ success: true, autoEat: botState.autoEat, message: `Auto Eat: ${botState.autoEat ? 'ON' : 'OFF'}` });
     }
 
@@ -247,7 +236,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
       for (const item of items) {
         try { await bot.tossStack(item); } catch (e) {}
       }
-      bot.chat('Web dashboard ke command se sari inventory drop kar di!');
+      bot.chat('Web dashboard se saari inventory drop kar di!');
       return res.json({ success: true, message: 'All items dropped!' });
     }
 
@@ -257,7 +246,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
       bot.collectBlock.cancelTask();
       botState.autoFarm = false;
       clearTimeout(botState.farmingInterval);
-      bot.chat('Emergency stop triggered via Web!');
+      bot.chat('Emergency stop triggered!');
       return res.json({ success: true, message: 'All tasks stopped!' });
     }
 
@@ -330,7 +319,7 @@ async function executeHouseBuild(bot) {
       for (let x = 0; x < 4; x++) {
         for (let z = 0; z < 4; z++) {
           if (x === 0 || x === 3 || z === 0 || z === 3) {
-            if (x === 1 && z === 0 && y < 2) continue; // Door entry
+            if (x === 1 && z === 0 && y < 2) continue; // Door frame
             const targetPos = startPos.offset(x, y, z);
             const blockAtTarget = bot.blockAt(targetPos);
             if (blockAtTarget && blockAtTarget.name === 'air') {
@@ -346,13 +335,13 @@ async function executeHouseBuild(bot) {
     }
     bot.chat("Starter House complete!");
   } catch (err) {
-    bot.chat(`Building me rukawat: ${err.message}`);
+    bot.chat(`Building error: ${err.message}`);
   }
 }
 
 module.exports = webInventoryPlugin;
 
-// Bot Connection Lifecycle
+// Bot Lifecycle Engine
 if (require.main === module) {
   function launchBot() {
     const HOST_ENDPOINT = process.argv[2] || 'DG_LAND502.aternos.me';
@@ -365,7 +354,7 @@ if (require.main === module) {
       port: PORT_ENDPOINT,
       username: BOT_IDENTITY,
       checkTimeoutInterval: 120000,
-      version: false
+      version: '1.20.4' // Explicit stable version protocol
     });
 
     bot.loadPlugin(pathfinder);
@@ -377,13 +366,14 @@ if (require.main === module) {
       console.log(`[AGENT JOINED] Bot ${bot.username} entered server.`);
       try { module.exports(bot, { port: WEB_PORT }); } catch (e) {}
 
-      const mcData = require('minecraft-data')(bot.version);
+      let mcData;
+      try { mcData = require('minecraft-data')(bot.version); } catch(e) { mcData = require('minecraft-data')(DEFAULT_FALLBACK_VERSION); }
+
       const defaultMove = new Movements(bot, mcData);
       defaultMove.allowParkour = true;
       defaultMove.canDig = true;
       bot.pathfinder.setMovements(defaultMove);
 
-      // Auto-Eat Setup
       bot.autoEat.options = {
         priority: 'foodPoints',
         startAt: 14,
@@ -391,16 +381,16 @@ if (require.main === module) {
       };
     });
 
-    // In-game Chat Commands Handler
     bot.on('chat', async (username, message) => {
       if (username === bot.username) return;
       const args = message.trim().split(/\s+/);
       const cmd = args[0].toLowerCase();
-      const mcData = require('minecraft-data')(bot.version);
+      let mcData;
+      try { mcData = require('minecraft-data')(bot.version); } catch(e) { mcData = require('minecraft-data')(DEFAULT_FALLBACK_VERSION); }
 
       if (cmd === 'come' || cmd === 'follow') {
         const player = bot.players[username]?.entity;
-        if (!player) return bot.chat(`@${username} aap mujhe dikh nahi rahe ho! Paas aao.`);
+        if (!player) return bot.chat(`@${username} aap mujhe scan nahi ho rahe! Paas aao.`);
         bot.chat(`Following @${username}...`);
         bot.pathfinder.setGoal(new goals.GoalFollow(player, 2), true);
       }
@@ -411,7 +401,7 @@ if (require.main === module) {
         bot.collectBlock.cancelTask();
         botState.autoFarm = false;
         clearTimeout(botState.farmingInterval);
-        bot.chat("Saare ongoing actions ruk gaye!");
+        bot.chat("Saare ongoing actions cancel kar diye!");
       }
 
       else if (cmd === 'farm') {
@@ -426,9 +416,7 @@ if (require.main === module) {
       }
 
       else if (cmd === 'eat') {
-        bot.autoEat.eat().then(() => {
-          bot.chat("Khana kha liya!");
-        }).catch(e => bot.chat(`Khana nahi kha paya: ${e.message}`));
+        bot.autoEat.eat().then(() => bot.chat("Khana kha liya!")).catch(e => bot.chat(`Bhookh nahi hai ya khana nahi mila.`));
       }
 
       else if (cmd === 'build' && args[1] === 'house') {
@@ -457,7 +445,7 @@ if (require.main === module) {
           count = parseInt(args[2]) || 1;
         }
 
-        if (!blockQuery) return bot.chat("Example: collect wood 5 ya collect stone 10");
+        if (!blockQuery) return bot.chat("Example: collect wood 5");
 
         let targetNames = BLOCK_ALIASES[blockQuery] || [blockQuery];
         let targetIds = targetNames.map(name => mcData.blocksByName[name]?.id).filter(Boolean);
@@ -465,7 +453,7 @@ if (require.main === module) {
         if (!targetIds.length) return bot.chat(`Block "${blockQuery}" nahi mila.`);
 
         const foundPositions = bot.findBlocks({ matching: targetIds, maxDistance: 64, count: count });
-        if (!foundPositions.length) return bot.chat(`64 blocks me koi "${blockQuery}" nahi mila.`);
+        if (!foundPositions.length) return bot.chat(`64 blocks me koi open "${blockQuery}" nahi mila.`);
 
         bot.chat(`${foundPositions.length} ${blockQuery} todne jaa raha hoon...`);
         try {
@@ -483,7 +471,7 @@ if (require.main === module) {
         for (const item of items) {
           try { await bot.tossStack(item); } catch (e) {}
         }
-        bot.chat("Sari inventory drop kar di!");
+        bot.chat("Saari inventory drop kar di!");
       }
 
       else if (cmd === 'drop' && args[1]) {
