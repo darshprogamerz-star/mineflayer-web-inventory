@@ -1,6 +1,6 @@
 /**
- * Ultimate Autonomous Minecraft Companion & AI Brain (Fixed Radar & API)
- * Version: 15.1.0-Titan-Stable
+ * Ultimate Autonomous Minecraft Companion & AI Brain (With Advanced Error Tracking)
+ * Version: 15.2.0-Titan-Stable
  */
 
 const http = require('http');
@@ -42,16 +42,16 @@ const BLOCK_ALIASES = {
 };
 
 /**
- * Native Gemini AI Function (Fixed Model Name)
+ * Native Gemini AI Function (With Error Fix & Gemini-Pro)
  */
 async function askAiBrain(promptText, botStatus) {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return "Boss, GEMINI_API_KEY set nahi hai Render me!";
+  if (!apiKey) return "Boss, API Key nahi mili!";
 
   try {
-    // Fixed: Using gemini-1.5-flash-latest or gemini-pro for stable API v1beta
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
-    const userPrompt = `You are 'Nokar', an intelligent, loyal, and witty AI Minecraft assistant playing on a server. Keep your responses short (under 20 words), casual, engaging, and in Hinglish. Current Bot Status -> Health: ${botStatus.hp}/20, Food: ${botStatus.food}/20, GuardMode: ${botStatus.guard}, AntiAFK: ${botStatus.afk}. User says: "${promptText}"`;
+    // Sabse stable API endpoint
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
+    const userPrompt = `You are 'Nokar', an intelligent, casual Minecraft assistant. Respond in short Hinglish under 20 words. User says: "${promptText}"`;
 
     const response = await fetch(url, {
       method: 'POST',
@@ -63,28 +63,20 @@ async function askAiBrain(promptText, botStatus) {
 
     const data = await response.json();
     
-    // Fallback to gemini-pro if 1.5-flash-latest fails
-    if (data.error && data.error.message.includes("not found")) {
-        const fallbackUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
-        const fallbackRes = await fetch(fallbackUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ parts: [{ text: userPrompt }] }] })
-        });
-        const fallbackData = await fallbackRes.json();
-        return fallbackData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "Haan boss, sun raha hoon!";
-    }
-
+    // Agar Google ki taraf se koi error aata hai, toh bot wo game me bata dega
     if (data.error) {
-      console.error('[GEMINI API ERROR]', data.error.message);
-      return `API Error: ${data.error.message}`;
+      return `Google Error: ${data.error.message.substring(0, 50)}...`;
     }
 
     const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    return reply ? reply.trim() : "Haan boss, sun raha hoon!";
+    
+    if (!reply) {
+        return "API ne empty jawab diya boss!";
+    }
+
+    return reply.trim();
   } catch (err) {
-    console.error('[AI FETCH ERROR]', err.message);
-    return "Network error aa gaya!";
+    return `Fetch Error: ${err.message.substring(0, 50)}`;
   }
 }
 
