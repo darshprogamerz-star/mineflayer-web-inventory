@@ -1,6 +1,6 @@
 /**
- * Master Autonomous Minecraft Companion & AI Brain (All Features Intact)
- * Version: 12.0.0-Titan-Complete-AI
+ * Master Autonomous Minecraft Companion & AI Brain (All Features + Gemini AI)
+ * Version: 12.5.0-Titan-Complete-AI
  */
 
 const http = require('http');
@@ -9,10 +9,11 @@ const socketIo = require('socket.io');
 const mineflayer = require('mineflayer');
 const { Vec3 } = require('vec3');
 const { Client, GatewayIntentBits } = require('discord.js');
-const { GoogleGenAI } = require('@google/genai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 // Initialize Gemini AI
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+const aiModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
 // Plugins
 const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
@@ -50,16 +51,10 @@ const BLOCK_ALIASES = {
  */
 async function askAiBrain(promptText, botStatus) {
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [
-        {
-          role: 'user',
-          parts: [{ text: `You are 'Nokar', an intelligent, loyal, and witty AI Minecraft assistant playing on a server. Keep your responses short (under 20 words), casual, engaging, and in Hinglish. Current Bot Status -> Health: ${botStatus.hp}/20, Food: ${botStatus.food}/20, GuardMode: ${botStatus.guard}, AntiAFK: ${botStatus.afk}. User says: "${promptText}"` }]
-        }
-      ]
-    });
-    return response.text ? response.text.trim() : "Haan boss, batao kya karna hai?";
+    const prompt = `You are 'Nokar', an intelligent, loyal, and witty AI Minecraft assistant playing on a server. Keep your responses short (under 20 words), casual, engaging, and in Hinglish. Current Bot Status -> Health: ${botStatus.hp}/20, Food: ${botStatus.food}/20, GuardMode: ${botStatus.guard}, AntiAFK: ${botStatus.afk}. User says: "${promptText}"`;
+    const result = await aiModel.generateContent(prompt);
+    const response = await result.response;
+    return response.text() ? response.text().trim() : "Haan boss, batao kya karna hai?";
   } catch (err) {
     console.error('[AI ERROR]', err.message);
     return "Haan sun raha hoon!";
