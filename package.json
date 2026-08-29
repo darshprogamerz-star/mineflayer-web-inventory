@@ -1,7 +1,7 @@
 {
   "name": "mineflayer-web-inventory",
-  "version": "15.0.0",
-  "description": "Titan Autonomous Minecraft Companion with All Features & Native AI",
+  "version": "15.2.0",
+  "description": "Titan Autonomous Minecraft Companion with Advanced Native AI Error Tracking",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
