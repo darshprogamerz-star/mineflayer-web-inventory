@@ -1,6 +1,7 @@
 /**
- * Master Autonomous Minecraft Companion & Web Inventory Agent
- * Version: 6.0.0-Ultimate
+ * Master Autonomous Minecraft Companion Agent
+ * Built-in 2D Live Radar Screen + Web Dashboard & Controls
+ * Version: 7.0.0-Radar
  */
 
 const http = require('http');
@@ -22,7 +23,7 @@ const botState = {
   followingPlayer: null
 };
 
-// Resource Aliases
+// Block aliases for mining
 const BLOCK_ALIASES = {
   'diamond': ['diamond_ore', 'deepslate_diamond_ore', 'diamond_block'],
   'iron': ['iron_ore', 'deepslate_iron_ore', 'raw_iron_block'],
@@ -35,7 +36,7 @@ const BLOCK_ALIASES = {
 };
 
 /**
- * Auto Equip Functions
+ * Auto-Equipment Engine
  */
 async function equipBestWeapon(bot) {
   const weapons = bot.inventory.items().filter(item => item.name.includes('sword') || item.name.includes('axe'));
@@ -62,7 +63,7 @@ async function equipBestTool(bot, block) {
 }
 
 /**
- * 4x4 Complete Solid House Builder
+ * 4x4 Solid House Construction Routine
  */
 async function executeHouseBuild(bot) {
   const getBuildBlock = () => bot.inventory.items().find(i => 
@@ -70,26 +71,24 @@ async function executeHouseBuild(bot) {
   );
 
   if (!getBuildBlock()) {
-    return bot.chat("Ghar banane ke liye inventory me blocks (planks/cobble/dirt) nahi hain!");
+    return bot.chat("Ghar banane ke liye blocks (planks/cobble/dirt) inventory me nahi hain!");
   }
 
   bot.chat("4x4 Complete House banana shuru kar raha hoon...");
   const start = bot.entity.position.floored().offset(1, 0, 1);
   const placeList = [];
 
-  // Walls (Height 3)
   for (let y = 0; y < 3; y++) {
     for (let x = 0; x < 4; x++) {
       for (let z = 0; z < 4; z++) {
         if (x === 0 || x === 3 || z === 0 || z === 3) {
-          if (x === 1 && z === 0 && (y === 0 || y === 1)) continue; // Door passage
+          if (x === 1 && z === 0 && (y === 0 || y === 1)) continue; // Door frame
           placeList.push(start.offset(x, y, z));
         }
       }
     }
   }
 
-  // Roof
   for (let x = 0; x < 4; x++) {
     for (let z = 0; z < 4; z++) {
       placeList.push(start.offset(x, 3, z));
@@ -102,42 +101,37 @@ async function executeHouseBuild(bot) {
 
     const blockItem = getBuildBlock();
     if (!blockItem) {
-      bot.chat("Blocks khatam ho gaye! Thode aur blocks do.");
+      bot.chat("Blocks khatam ho gaye!");
       return;
     }
 
     try {
       await bot.equip(blockItem, 'hand');
-      
       if (bot.entity.position.distanceTo(pos) > 4.5) {
         await bot.pathfinder.goto(new goals.GoalNear(pos.x, pos.y, pos.z, 3)).catch(() => {});
       }
 
       const neighbors = [
-        pos.offset(0, -1, 0),
-        pos.offset(1, 0, 0),
-        pos.offset(-1, 0, 0),
-        pos.offset(0, 0, 1),
-        pos.offset(0, 0, -1)
+        pos.offset(0, -1, 0), pos.offset(1, 0, 0), pos.offset(-1, 0, 0),
+        pos.offset(0, 0, 1), pos.offset(0, 0, -1)
       ];
 
       for (const n of neighbors) {
         const refBlock = bot.blockAt(n);
         if (refBlock && refBlock.name !== 'air') {
-          const faceVec = pos.minus(n);
           await bot.lookAt(pos);
-          await bot.placeBlock(refBlock, faceVec).catch(() => {});
+          await bot.placeBlock(refBlock, pos.minus(n)).catch(() => {});
           await bot.waitForTicks(3);
           break;
         }
       }
     } catch (e) {}
   }
-  bot.chat("Complete House ban gaya!");
+  bot.chat("Complete Starter Base ban gaya!");
 }
 
 /**
- * Auto-Harvest & Auto-Replant Crop Engine
+ * Auto Farm Routine
  */
 async function runFarmLoop(bot) {
   if (!botState.autoFarm) return;
@@ -174,7 +168,7 @@ async function runFarmLoop(bot) {
 }
 
 /**
- * Web Dashboard Server
+ * Web Dashboard & Live 2D Radar Engine
  */
 function webInventoryPlugin(bot, customOptions = {}) {
   const port = customOptions.port || process.env.PORT || 3000;
@@ -189,28 +183,38 @@ function webInventoryPlugin(bot, customOptions = {}) {
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Nokar Bot - Control Dashboard</title>
+        <title>Nokar Bot - Live Radar & Dashboard</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <script src="/socket.io/socket.io.js"></script>
         <style>
           * { box-sizing: border-box; margin: 0; padding: 0; }
           body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0b0f19; color: #e2e8f0; display: flex; justify-content: center; padding: 20px; }
-          .panel { width: 100%; max-width: 650px; background: #151d30; border-radius: 14px; border: 1px solid #24324f; padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); }
-          .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-          .title { font-size: 22px; font-weight: bold; color: #38bdf8; display: flex; align-items: center; gap: 8px; }
-          .badge { background: #059669; color: #fff; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }
-          .meters { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
-          .meter-card { background: #0b0f19; padding: 12px; border-radius: 8px; border: 1px solid #1e293b; text-align: center; }
-          .meter-val { font-size: 20px; font-weight: bold; }
+          .panel { width: 100%; max-width: 680px; background: #151d30; border-radius: 14px; border: 1px solid #24324f; padding: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); }
+          .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+          .title { font-size: 20px; font-weight: bold; color: #38bdf8; display: flex; align-items: center; gap: 8px; }
+          .badge { background: #059669; color: #fff; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; }
+          
+          /* Radar Section */
+          .radar-container { display: flex; flex-direction: column; align-items: center; background: #080c14; border-radius: 10px; border: 1px solid #1e293b; padding: 12px; margin-bottom: 16px; }
+          canvas { background: #050811; border-radius: 8px; border: 1px solid #334155; }
+          .radar-legend { display: flex; gap: 15px; font-size: 11px; margin-top: 8px; color: #94a3b8; }
+          .legend-item { display: flex; align-items: center; gap: 4px; }
+          .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+          .meters { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+          .meter-card { background: #0b0f19; padding: 10px; border-radius: 8px; border: 1px solid #1e293b; text-align: center; }
+          .meter-val { font-size: 18px; font-weight: bold; }
           .health-txt { color: #f43f5e; }
           .food-txt { color: #fbbf24; }
-          .grid-title { font-size: 13px; text-transform: uppercase; color: #94a3b8; letter-spacing: 1px; margin: 16px 0 8px; }
-          .grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 6px; background: #0b0f19; padding: 12px; border-radius: 10px; border: 1px solid #1e293b; }
-          .slot { aspect-ratio: 1; background: #1e293b; border: 1px solid #334155; border-radius: 6px; position: relative; display: flex; align-items: center; justify-content: center; text-align: center; padding: 2px; }
-          .slot .item-name { font-size: 8.5px; color: #cbd5e1; word-break: break-all; line-height: 1; }
-          .slot .item-count { position: absolute; bottom: 2px; right: 3px; font-size: 11px; font-weight: 800; color: #38bdf8; }
-          .controls { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 24px; }
-          button { padding: 12px; border: none; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; color: white; transition: 0.15s; }
+
+          .grid-title { font-size: 12px; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.8px; margin: 12px 0 6px; }
+          .grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 5px; background: #0b0f19; padding: 10px; border-radius: 8px; border: 1px solid #1e293b; }
+          .slot { aspect-ratio: 1; background: #1e293b; border: 1px solid #334155; border-radius: 4px; position: relative; display: flex; align-items: center; justify-content: center; text-align: center; padding: 2px; }
+          .slot .item-name { font-size: 8px; color: #cbd5e1; word-break: break-all; line-height: 1; }
+          .slot .item-count { position: absolute; bottom: 1px; right: 2px; font-size: 10px; font-weight: 800; color: #38bdf8; }
+
+          .controls { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 18px; }
+          button { padding: 11px; border: none; border-radius: 6px; font-weight: bold; font-size: 13px; cursor: pointer; color: white; transition: 0.15s; }
           button:active { transform: scale(0.97); }
           .btn-farm { background: #059669; }
           .btn-eat { background: #d97706; }
@@ -222,38 +226,109 @@ function webInventoryPlugin(bot, customOptions = {}) {
       <body>
         <div class="panel">
           <div class="top-bar">
-            <div class="title">🤖 Nokar Web Control</div>
-            <div class="badge">Connected</div>
+            <div class="title">📡 Nokar Live Radar & Agent</div>
+            <div class="badge">Live 2D Stream</div>
           </div>
+
+          <!-- 2D Radar Canvas -->
+          <div class="radar-container">
+            <canvas id="radarCanvas" width="300" height="300"></canvas>
+            <div class="radar-legend">
+              <div class="legend-item"><span class="dot" style="background:#22c55e;"></span> Bot</div>
+              <div class="legend-item"><span class="dot" style="background:#38bdf8;"></span> Players</div>
+              <div class="legend-item"><span class="dot" style="background:#ef4444;"></span> Mobs/Zombies</div>
+            </div>
+          </div>
+
           <div class="meters">
             <div class="meter-card">
               <div class="meter-val health-txt" id="hp">20 / 20</div>
-              <div style="font-size: 12px; color: #64748b;">❤️ Health</div>
+              <div style="font-size: 11px; color: #64748b;">❤️ Health</div>
             </div>
             <div class="meter-card">
               <div class="meter-val food-txt" id="food">20 / 20</div>
-              <div style="font-size: 12px; color: #64748b;">🍖 Food</div>
+              <div style="font-size: 11px; color: #64748b;">🍖 Food</div>
             </div>
           </div>
+
           <div class="grid-title">Main Inventory</div>
           <div class="grid" id="mainGrid"></div>
+
           <div class="grid-title">Hotbar</div>
           <div class="grid" id="hotbarGrid"></div>
+
           <div class="controls">
             <button class="btn-farm" onclick="send('toggle_farm')" id="farmBtn">🌾 Auto Farm: OFF</button>
-            <button class="btn-eat" onclick="send('toggle_eat')">🍖 Auto Eat: ON</button>
+            <button class="btn-eat" onclick="send('toggle_eat')">🍖 Auto Eat</button>
             <button class="btn-build" onclick="send('build_house')">🏠 Build House</button>
             <button class="btn-drop" onclick="send('dropall')">📦 Drop All</button>
             <button class="btn-stop" onclick="send('stop')">🛑 Emergency Stop</button>
           </div>
         </div>
+
         <script>
           const socket = io();
+          const canvas = document.getElementById('radarCanvas');
+          const ctx = canvas.getContext('2d');
+          const cX = canvas.width / 2;
+          const cY = canvas.height / 2;
+          const scale = 5; // 1 block = 5 pixels
+
           let farmOn = false;
           const main = document.getElementById('mainGrid');
           const hotbar = document.getElementById('hotbarGrid');
+
           for (let i = 9; i <= 35; i++) main.innerHTML += '<div class="slot" id="s-' + i + '"></div>';
           for (let i = 36; i <= 44; i++) hotbar.innerHTML += '<div class="slot" id="s-' + i + '"></div>';
+
+          // Render Live Radar
+          socket.on('radar', data => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Radar concentric rings
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 1;
+            [30, 60, 90, 120].forEach(r => {
+              ctx.beginPath();
+              ctx.arc(cX, cY, r, 0, Math.PI * 2);
+              ctx.stroke();
+            });
+
+            // Entities rendering
+            data.entities.forEach(e => {
+              const dx = (e.x - data.bot.x) * scale;
+              const dz = (e.z - data.bot.z) * scale;
+              const pX = cX + dx;
+              const pY = cY + dz;
+
+              if (pX >= 0 && pX <= canvas.width && pY >= 0 && pY <= canvas.height) {
+                ctx.fillStyle = e.type === 'player' ? '#38bdf8' : '#ef4444';
+                ctx.beginPath();
+                ctx.arc(pX, pY, 4, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#94a3b8';
+                ctx.font = '9px sans-serif';
+                ctx.fillText(e.name || e.type, pX + 6, pY + 3);
+              }
+            });
+
+            // Draw Bot at Center (Green)
+            ctx.fillStyle = '#22c55e';
+            ctx.beginPath();
+            ctx.arc(cX, cY, 5, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Bot Heading Pointer
+            const headX = cX - Math.sin(data.bot.yaw) * 12;
+            const headY = cY + Math.cos(data.bot.yaw) * 12;
+            ctx.strokeStyle = '#22c55e';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(cX, cY);
+            ctx.lineTo(headX, headY);
+            ctx.stroke();
+          });
 
           socket.on('sync', data => {
             if (data.hp !== undefined) document.getElementById('hp').innerText = Math.round(data.hp) + ' / 20';
@@ -320,7 +395,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
       bot.collectBlock.cancelTask();
       botState.autoFarm = false;
       clearTimeout(botState.farmingInterval);
-      bot.chat("Actions stopped!");
+      bot.chat("Ruk gaya!");
     }
     res.json({ success: true });
   });
@@ -331,6 +406,36 @@ function webInventoryPlugin(bot, customOptions = {}) {
       .filter(Boolean);
     io.emit('sync', { hp: bot.health, food: bot.food, items });
   }
+
+  // Live Radar Broadcast (Emits every 500ms)
+  setInterval(() => {
+    if (!bot.entity) return;
+    const nearby = [];
+    for (const id in bot.entities) {
+      const e = bot.entities[id];
+      if (e === bot.entity) continue;
+      if (e.type === 'player' || e.type === 'mob') {
+        const dist = bot.entity.position.distanceTo(e.position);
+        if (dist <= 30) {
+          nearby.push({
+            name: e.username || e.displayName || e.name,
+            type: e.type,
+            x: e.position.x,
+            z: e.position.z
+          });
+        }
+      }
+    }
+
+    io.emit('radar', {
+      bot: {
+        x: bot.entity.position.x,
+        z: bot.entity.position.z,
+        yaw: bot.entity.yaw
+      },
+      entities: nearby
+    });
+  }, 500);
 
   io.on('connection', () => syncState());
   bot.inventory.on('updateSlot', () => syncState());
@@ -363,13 +468,12 @@ if (require.main === module) {
     bot.loadPlugin(pvp);
 
     bot.once('spawn', () => {
-      console.log(`[AGENT JOINED] ${bot.username} connected.`);
+      console.log(`[AGENT JOINED] ${bot.username} active in world.`);
       try { webInventoryPlugin(bot, { port: WEB_PORT }); } catch (e) {}
 
       const mcData = require('minecraft-data')(bot.version);
       const defaultMove = new Movements(bot, mcData);
 
-      // Advanced Obstacle & Climb Handling
       defaultMove.allowParkour = true;
       defaultMove.canDig = true;
       defaultMove.allow1by1towers = true;
@@ -385,7 +489,6 @@ if (require.main === module) {
       bot.autoEat.options = { priority: 'foodPoints', startAt: 14, bannedFood: ['rotten_flesh', 'spider_eye'] };
     });
 
-    // Real-Time Continuous Follow Loop
     bot.on('physicsTick', () => {
       if (!botState.followingPlayer) return;
       const target = bot.players[botState.followingPlayer]?.entity;
@@ -400,7 +503,6 @@ if (require.main === module) {
       const cmd = args[0].toLowerCase();
       const mcData = require('minecraft-data')(bot.version);
 
-      // 1. Follow
       if (cmd === 'come' || cmd === 'follow') {
         const player = bot.players[username]?.entity;
         botState.followingPlayer = username;
@@ -408,11 +510,9 @@ if (require.main === module) {
           bot.chat(`Following @${username}!`);
           bot.pathfinder.setGoal(new goals.GoalFollow(player, 2), true);
         } else {
-          bot.chat(`Tracking player @${username}...`);
+          bot.chat(`Tracking @${username}...`);
         }
       }
-
-      // 2. Stop
       else if (cmd === 'stop') {
         botState.followingPlayer = null;
         bot.pathfinder.stop();
@@ -422,19 +522,15 @@ if (require.main === module) {
         clearTimeout(botState.farmingInterval);
         bot.chat("Ruk gaya!");
       }
-
-      // 3. House Builder
       else if (cmd === 'build' && args[1] === 'house') {
         executeHouseBuild(bot);
       }
-
-      // 4. Auto Crafting
       else if (cmd === 'craft' && args[1]) {
         const itemName = args[1].toLowerCase();
         const count = parseInt(args[2]) || 1;
         const itemObj = mcData.itemsByName[itemName];
 
-        if (!itemObj) return bot.chat(`"${itemName}" valid item nahi hai.`);
+        if (!itemObj) return bot.chat(`"${itemName}" valid nahi hai.`);
 
         const craftingTable = bot.findBlock({
           matching: mcData.blocksByName.crafting_table?.id,
@@ -442,17 +538,15 @@ if (require.main === module) {
         });
 
         const recipes = bot.recipesFor(itemObj.id, null, 1, craftingTable);
-        if (!recipes.length) return bot.chat(`Mere paas "${itemName}" craft karne ka saman ya Crafting Table nahi hai.`);
+        if (!recipes.length) return bot.chat(`Mere paas "${itemName}" banane ka saman ya Crafting Table nahi hai.`);
 
         try {
           await bot.craft(recipes[0], count, craftingTable);
           bot.chat(`${count} ${itemName} craft kar liya!`);
         } catch (err) {
-          bot.chat(`Crafting error: ${err.message}`);
+          bot.chat(`Craft error: ${err.message}`);
         }
       }
-
-      // 5. Mining
       else if (cmd === 'collect' || cmd === 'mine') {
         let blockQuery = args[1]?.toLowerCase();
         let count = parseInt(args[2]) || 1;
@@ -474,11 +568,9 @@ if (require.main === module) {
           await bot.collectBlock.collect(targets);
           bot.chat("Collection done!");
         } catch (e) {
-          bot.chat(`Collection error: ${e.message}`);
+          bot.chat(`Error: ${e.message}`);
         }
       }
-
-      // 6. Drop All
       else if (cmd === 'dropall') {
         for (const item of bot.inventory.items()) {
           try { await bot.tossStack(item); } catch (e) {}
