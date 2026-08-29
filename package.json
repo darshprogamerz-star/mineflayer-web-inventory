@@ -1,13 +1,12 @@
 {
   "name": "mineflayer-web-inventory",
-  "version": "4.0.0",
-  "description": "Titan Autonomous Minecraft Companion with Gemini AI Brain",
+  "version": "14.0.0",
+  "description": "Titan Autonomous Minecraft Companion with All Features & Native AI",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "@google/genai": "^0.1.2",
     "discord.js": "^14.14.1",
     "express": "^4.18.2",
     "lodash": "^4.17.21",
