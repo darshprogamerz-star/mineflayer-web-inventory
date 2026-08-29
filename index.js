@@ -1,7 +1,7 @@
 /**
  * Master Autonomous Minecraft Companion Agent
- * Built-in 2D Live Radar Screen + Web Dashboard & Controls
- * Version: 7.0.0-Radar
+ * Web Controller (D-Pad, Jump, Sneak, In-Game Chat) + 2D Radar + Web Inventory
+ * Version: 8.0.0-FullWebControl
  */
 
 const http = require('http');
@@ -168,7 +168,7 @@ async function runFarmLoop(bot) {
 }
 
 /**
- * Web Dashboard & Live 2D Radar Engine
+ * Web Dashboard, Controller & Live Radar Server
  */
 function webInventoryPlugin(bot, customOptions = {}) {
   const port = customOptions.port || process.env.PORT || 3000;
@@ -183,39 +183,59 @@ function webInventoryPlugin(bot, customOptions = {}) {
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Nokar Bot - Live Radar & Dashboard</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Nokar Bot - Live Controller & Radar</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
         <script src="/socket.io/socket.io.js"></script>
         <style>
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0b0f19; color: #e2e8f0; display: flex; justify-content: center; padding: 20px; }
+          * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+          body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0b0f19; color: #e2e8f0; display: flex; justify-content: center; padding: 16px; }
           .panel { width: 100%; max-width: 680px; background: #151d30; border-radius: 14px; border: 1px solid #24324f; padding: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); }
           .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
           .title { font-size: 20px; font-weight: bold; color: #38bdf8; display: flex; align-items: center; gap: 8px; }
           .badge { background: #059669; color: #fff; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; }
           
-          /* Radar Section */
+          /* Radar */
           .radar-container { display: flex; flex-direction: column; align-items: center; background: #080c14; border-radius: 10px; border: 1px solid #1e293b; padding: 12px; margin-bottom: 16px; }
-          canvas { background: #050811; border-radius: 8px; border: 1px solid #334155; }
+          canvas { background: #050811; border-radius: 8px; border: 1px solid #334155; max-width: 100%; height: auto; }
           .radar-legend { display: flex; gap: 15px; font-size: 11px; margin-top: 8px; color: #94a3b8; }
           .legend-item { display: flex; align-items: center; gap: 4px; }
           .dot { width: 8px; height: 8px; border-radius: 50%; }
 
+          /* Stats */
           .meters { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
           .meter-card { background: #0b0f19; padding: 10px; border-radius: 8px; border: 1px solid #1e293b; text-align: center; }
           .meter-val { font-size: 18px; font-weight: bold; }
           .health-txt { color: #f43f5e; }
           .food-txt { color: #fbbf24; }
 
+          /* In-Game Chat Box */
+          .chat-section { display: flex; gap: 8px; margin-bottom: 16px; }
+          .chat-input { flex: 1; padding: 10px 14px; background: #0b0f19; border: 1px solid #334155; border-radius: 8px; color: #fff; font-size: 14px; outline: none; }
+          .chat-input:focus { border-color: #38bdf8; }
+          .chat-btn { background: #0284c7; padding: 10px 18px; border: none; border-radius: 8px; color: white; font-weight: bold; cursor: pointer; }
+
+          /* Virtual Game Controller (D-Pad) */
+          .controller-wrapper { background: #080c14; border: 1px solid #1e293b; border-radius: 12px; padding: 16px; margin-bottom: 16px; display: flex; flex-direction: column; align-items: center; }
+          .controller-title { font-size: 12px; text-transform: uppercase; color: #94a3b8; letter-spacing: 1px; margin-bottom: 12px; }
+          .dpad-grid { display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 56px); gap: 6px; justify-content: center; }
+          .ctrl-btn { background: #1e293b; border: 2px solid #334155; border-radius: 10px; color: white; font-size: 18px; font-weight: bold; display: flex; align-items: center; justify-content: center; cursor: pointer; touch-action: manipulation; transition: 0.1s; }
+          .ctrl-btn:active, .ctrl-btn.active { background: #0284c7; border-color: #38bdf8; transform: scale(0.92); }
+          .action-pad { display: flex; gap: 12px; margin-top: 14px; }
+          .action-ctrl { padding: 10px 20px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; color: white; font-size: 13px; }
+          .btn-jump { background: #16a34a; }
+          .btn-sneak { background: #d97706; }
+
+          /* Inventory Slots */
           .grid-title { font-size: 12px; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.8px; margin: 12px 0 6px; }
           .grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 5px; background: #0b0f19; padding: 10px; border-radius: 8px; border: 1px solid #1e293b; }
           .slot { aspect-ratio: 1; background: #1e293b; border: 1px solid #334155; border-radius: 4px; position: relative; display: flex; align-items: center; justify-content: center; text-align: center; padding: 2px; }
           .slot .item-name { font-size: 8px; color: #cbd5e1; word-break: break-all; line-height: 1; }
           .slot .item-count { position: absolute; bottom: 1px; right: 2px; font-size: 10px; font-weight: 800; color: #38bdf8; }
 
+          /* Command Actions */
           .controls { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 18px; }
-          button { padding: 11px; border: none; border-radius: 6px; font-weight: bold; font-size: 13px; cursor: pointer; color: white; transition: 0.15s; }
-          button:active { transform: scale(0.97); }
+          button.quick-act { padding: 11px; border: none; border-radius: 6px; font-weight: bold; font-size: 13px; cursor: pointer; color: white; transition: 0.15s; }
+          button.quick-act:active { transform: scale(0.97); }
           .btn-farm { background: #059669; }
           .btn-eat { background: #d97706; }
           .btn-build { background: #2563eb; }
@@ -226,8 +246,37 @@ function webInventoryPlugin(bot, customOptions = {}) {
       <body>
         <div class="panel">
           <div class="top-bar">
-            <div class="title">📡 Nokar Live Radar & Agent</div>
-            <div class="badge">Live 2D Stream</div>
+            <div class="title">🎮 Nokar Web Control Center</div>
+            <div class="badge">Online</div>
+          </div>
+
+          <!-- In-Game Chat Bar -->
+          <div class="chat-section">
+            <input type="text" id="chatMsg" class="chat-input" placeholder="Type message or /command...">
+            <button class="chat-btn" onclick="sendChat()">Send</button>
+          </div>
+
+          <!-- Virtual D-Pad & Movements -->
+          <div class="controller-wrapper">
+            <div class="controller-title">🕹️ Movement Controller (Hold to Move)</div>
+            <div class="dpad-grid">
+              <div></div>
+              <button class="ctrl-btn" onpointerdown="startMove('forward')" onpointerup="stopMove('forward')" onpointerleave="stopMove('forward')">⬆️</button>
+              <div></div>
+              
+              <button class="ctrl-btn" onpointerdown="startMove('left')" onpointerup="stopMove('left')" onpointerleave="stopMove('left')">⬅️</button>
+              <button class="ctrl-btn" onclick="triggerJump()">🦘</button>
+              <button class="ctrl-btn" onpointerdown="startMove('right')" onpointerup="stopMove('right')" onpointerleave="stopMove('right')">➡️</button>
+              
+              <div></div>
+              <button class="ctrl-btn" onpointerdown="startMove('back')" onpointerup="stopMove('back')" onpointerleave="stopMove('back')">⬇️</button>
+              <div></div>
+            </div>
+
+            <div class="action-pad">
+              <button class="action-ctrl btn-jump" onclick="triggerJump()">Jump</button>
+              <button class="action-ctrl btn-sneak" id="sneakBtn" onclick="toggleSneak()">Sneak: OFF</button>
+            </div>
           </div>
 
           <!-- 2D Radar Canvas -->
@@ -240,6 +289,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
             </div>
           </div>
 
+          <!-- Stats -->
           <div class="meters">
             <div class="meter-card">
               <div class="meter-val health-txt" id="hp">20 / 20</div>
@@ -258,11 +308,11 @@ function webInventoryPlugin(bot, customOptions = {}) {
           <div class="grid" id="hotbarGrid"></div>
 
           <div class="controls">
-            <button class="btn-farm" onclick="send('toggle_farm')" id="farmBtn">🌾 Auto Farm: OFF</button>
-            <button class="btn-eat" onclick="send('toggle_eat')">🍖 Auto Eat</button>
-            <button class="btn-build" onclick="send('build_house')">🏠 Build House</button>
-            <button class="btn-drop" onclick="send('dropall')">📦 Drop All</button>
-            <button class="btn-stop" onclick="send('stop')">🛑 Emergency Stop</button>
+            <button class="quick-act btn-farm" onclick="send('toggle_farm')" id="farmBtn">🌾 Auto Farm: OFF</button>
+            <button class="quick-act btn-eat" onclick="send('toggle_eat')">🍖 Auto Eat</button>
+            <button class="quick-act btn-build" onclick="send('build_house')">🏠 Build House</button>
+            <button class="quick-act btn-drop" onclick="send('dropall')">📦 Drop All</button>
+            <button class="quick-act btn-stop" onclick="send('stop')">🛑 Emergency Stop</button>
           </div>
         </div>
 
@@ -272,20 +322,53 @@ function webInventoryPlugin(bot, customOptions = {}) {
           const ctx = canvas.getContext('2d');
           const cX = canvas.width / 2;
           const cY = canvas.height / 2;
-          const scale = 5; // 1 block = 5 pixels
+          const scale = 5;
 
           let farmOn = false;
+          let isSneaking = false;
           const main = document.getElementById('mainGrid');
           const hotbar = document.getElementById('hotbarGrid');
 
           for (let i = 9; i <= 35; i++) main.innerHTML += '<div class="slot" id="s-' + i + '"></div>';
           for (let i = 36; i <= 44; i++) hotbar.innerHTML += '<div class="slot" id="s-' + i + '"></div>';
 
-          // Render Live Radar
+          // Movement Controls via Socket
+          function startMove(dir) {
+            socket.emit('control_move', { direction: dir, state: true });
+          }
+
+          function stopMove(dir) {
+            socket.emit('control_move', { direction: dir, state: false });
+          }
+
+          function triggerJump() {
+            socket.emit('control_jump');
+          }
+
+          function toggleSneak() {
+            isSneaking = !isSneaking;
+            document.getElementById('sneakBtn').innerText = 'Sneak: ' + (isSneaking ? 'ON' : 'OFF');
+            document.getElementById('sneakBtn').style.background = isSneaking ? '#b45309' : '#d97706';
+            socket.emit('control_sneak', { state: isSneaking });
+          }
+
+          function sendChat() {
+            const input = document.getElementById('chatMsg');
+            const msg = input.value.trim();
+            if (msg) {
+              socket.emit('send_chat', { message: msg });
+              input.value = '';
+            }
+          }
+
+          document.getElementById('chatMsg').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendChat();
+          });
+
+          // Render Radar
           socket.on('radar', data => {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Radar concentric rings
             ctx.strokeStyle = '#1e293b';
             ctx.lineWidth = 1;
             [30, 60, 90, 120].forEach(r => {
@@ -294,7 +377,6 @@ function webInventoryPlugin(bot, customOptions = {}) {
               ctx.stroke();
             });
 
-            // Entities rendering
             data.entities.forEach(e => {
               const dx = (e.x - data.bot.x) * scale;
               const dz = (e.z - data.bot.z) * scale;
@@ -313,13 +395,13 @@ function webInventoryPlugin(bot, customOptions = {}) {
               }
             });
 
-            // Draw Bot at Center (Green)
+            // Bot center
             ctx.fillStyle = '#22c55e';
             ctx.beginPath();
             ctx.arc(cX, cY, 5, 0, Math.PI * 2);
             ctx.fill();
 
-            // Bot Heading Pointer
+            // Heading pointer
             const headX = cX - Math.sin(data.bot.yaw) * 12;
             const headY = cY + Math.cos(data.bot.yaw) * 12;
             ctx.strokeStyle = '#22c55e';
@@ -366,6 +448,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
     `);
   });
 
+  // REST endpoints for autonomous triggers
   app.post('/api/action', async (req, res) => {
     const act = req.body.action;
     if (act === 'toggle_farm') {
@@ -390,14 +473,48 @@ function webInventoryPlugin(bot, customOptions = {}) {
     }
     if (act === 'stop') {
       botState.followingPlayer = null;
+      bot.clearControlStates();
       bot.pathfinder.stop();
       bot.pvp.stop();
       bot.collectBlock.cancelTask();
       botState.autoFarm = false;
       clearTimeout(botState.farmingInterval);
-      bot.chat("Ruk gaya!");
+      bot.chat("Stopped all ongoing actions!");
     }
     res.json({ success: true });
+  });
+
+  // Real-time socket events for controller & chat
+  io.on('connection', (socket) => {
+    syncState();
+
+    // Directional Movement Handler
+    socket.on('control_move', (data) => {
+      bot.setControlState(data.direction, !!data.state);
+    });
+
+    // Jump Handler
+    socket.on('control_jump', () => {
+      bot.setControlState('jump', true);
+      setTimeout(() => bot.setControlState('jump', false), 350);
+    });
+
+    // Sneak (Crouch) Handler
+    socket.on('control_sneak', (data) => {
+      bot.setControlState('sneak', !!data.state);
+    });
+
+    // Send Chat Handler
+    socket.on('send_chat', (data) => {
+      if (data && data.message) {
+        bot.chat(data.message);
+      }
+    });
+
+    // Reset controls when user leaves page
+    socket.on('disconnect', () => {
+      bot.clearControlStates();
+    });
   });
 
   function syncState() {
@@ -407,7 +524,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
     io.emit('sync', { hp: bot.health, food: bot.food, items });
   }
 
-  // Live Radar Broadcast (Emits every 500ms)
+  // Live Radar loop
   setInterval(() => {
     if (!bot.entity) return;
     const nearby = [];
@@ -437,7 +554,6 @@ function webInventoryPlugin(bot, customOptions = {}) {
     });
   }, 500);
 
-  io.on('connection', () => syncState());
   bot.inventory.on('updateSlot', () => syncState());
   bot.on('health', () => syncState());
 
@@ -515,6 +631,7 @@ if (require.main === module) {
       }
       else if (cmd === 'stop') {
         botState.followingPlayer = null;
+        bot.clearControlStates();
         bot.pathfinder.stop();
         bot.pvp.stop();
         bot.collectBlock.cancelTask();
