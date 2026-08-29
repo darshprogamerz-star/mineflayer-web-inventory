@@ -1,6 +1,6 @@
 /**
- * Ultimate Autonomous Minecraft Companion & AI Brain (Version Auto-Detect + Native AI)
- * Version: 15.0.0-Titan-Fixed
+ * Ultimate Autonomous Minecraft Companion & AI Brain (Fixed Radar & API)
+ * Version: 15.1.0-Titan-Stable
  */
 
 const http = require('http');
@@ -42,14 +42,15 @@ const BLOCK_ALIASES = {
 };
 
 /**
- * Native Gemini AI Function (Requires real AIzaSy... key)
+ * Native Gemini AI Function (Fixed Model Name)
  */
 async function askAiBrain(promptText, botStatus) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return "Boss, GEMINI_API_KEY set nahi hai Render me!";
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    // Fixed: Using gemini-1.5-flash-latest or gemini-pro for stable API v1beta
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
     const userPrompt = `You are 'Nokar', an intelligent, loyal, and witty AI Minecraft assistant playing on a server. Keep your responses short (under 20 words), casual, engaging, and in Hinglish. Current Bot Status -> Health: ${botStatus.hp}/20, Food: ${botStatus.food}/20, GuardMode: ${botStatus.guard}, AntiAFK: ${botStatus.afk}. User says: "${promptText}"`;
 
     const response = await fetch(url, {
@@ -61,6 +62,19 @@ async function askAiBrain(promptText, botStatus) {
     });
 
     const data = await response.json();
+    
+    // Fallback to gemini-pro if 1.5-flash-latest fails
+    if (data.error && data.error.message.includes("not found")) {
+        const fallbackUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
+        const fallbackRes = await fetch(fallbackUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: userPrompt }] }] })
+        });
+        const fallbackData = await fallbackRes.json();
+        return fallbackData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "Haan boss, sun raha hoon!";
+    }
+
     if (data.error) {
       console.error('[GEMINI API ERROR]', data.error.message);
       return `API Error: ${data.error.message}`;
@@ -268,6 +282,9 @@ async function runFarmLoop(bot) {
   if (botState.autoFarm) botState.farmingInterval = setTimeout(() => runFarmLoop(bot), 4000);
 }
 
+/**
+ * Web Dashboard Operations Center (Fully Restored & Uncompressed)
+ */
 function webInventoryPlugin(bot, customOptions = {}) {
   const port = customOptions.port || process.env.PORT || 3000;
   const app = express();
@@ -290,33 +307,43 @@ function webInventoryPlugin(bot, customOptions = {}) {
           .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
           .title { font-size: 19px; font-weight: bold; color: #38bdf8; }
           .badge { background: #8b5cf6; color: #fff; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; }
+          
           .chat-box { display: flex; gap: 8px; margin-bottom: 14px; }
           .chat-input { flex: 1; padding: 10px; background: #030712; border: 1px solid #374151; border-radius: 8px; color: #fff; outline: none; }
           .chat-btn { background: #0284c7; padding: 10px 16px; border: none; border-radius: 8px; color: white; font-weight: bold; cursor: pointer; }
+          
           .ctrl-wrapper { background: #030712; border: 1px solid #1f2937; border-radius: 12px; padding: 14px; margin-bottom: 14px; display: flex; flex-direction: column; align-items: center; }
-          .dpad { display: grid; grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 52px); gap: 6px; justify-content: center; }
+          .dpad { display: grid; grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 52px); gap: 6px; justify-content: center; margin-bottom: 10px; }
           .ctrl-btn { background: #1f2937; border: 2px solid #374151; border-radius: 8px; color: white; font-size: 18px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
           .ctrl-btn:active { background: #0284c7; }
+          .action-btn { padding: 8px 16px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; color: white; margin: 0 5px; }
+
           .action-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 14px; }
           .act-btn { padding: 11px; border: none; border-radius: 6px; font-weight: bold; color: white; cursor: pointer; }
           .btn-afk { background: #6366f1; } .btn-guard { background: #dc2626; } .btn-chest { background: #d97706; } .btn-fish { background: #0891b2; } .btn-farm { background: #059669; } .btn-build { background: #2563eb; } .btn-stop { background: #be123c; grid-column: span 2; }
+          
           .radar-card { display: flex; flex-direction: column; align-items: center; background: #030712; border-radius: 10px; border: 1px solid #1f2937; padding: 10px; margin-bottom: 14px; }
           canvas { background: #050811; border-radius: 8px; border: 1px solid #374151; max-width: 100%; }
+          .radar-legend { display: flex; gap: 12px; font-size: 11px; margin-top: 6px; color: #9ca3af; }
+          .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+
           .meters { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
-          .meter { background: #030712; padding: 8px; border-radius: 8px; text-align: center; }
+          .meter { background: #030712; padding: 8px; border-radius: 8px; text-align: center; border: 1px solid #1f2937; }
           .meter-val { font-size: 17px; font-weight: bold; }
           .hp-col { color: #f43f5e; } .fd-col { color: #fbbf24; }
-          .grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 5px; background: #030712; padding: 10px; border-radius: 8px; }
+          
+          .grid-title { font-size: 11px; text-transform: uppercase; color: #9ca3af; letter-spacing: 0.8px; margin: 10px 0 5px; }
+          .grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 5px; background: #030712; padding: 10px; border-radius: 8px; border: 1px solid #1f2937; }
           .slot { aspect-ratio: 1; background: #1f2937; border: 1px solid #374151; border-radius: 4px; position: relative; display: flex; align-items: center; justify-content: center; text-align: center; padding: 2px; }
-          .slot .item-name { font-size: 7.5px; color: #cbd5e1; }
+          .slot .item-name { font-size: 7.5px; color: #cbd5e1; word-break: break-all; line-height: 1; }
           .slot .item-count { position: absolute; bottom: 1px; right: 2px; font-size: 10px; font-weight: 800; color: #38bdf8; }
         </style>
       </head>
       <body>
         <div class="panel">
           <div class="top-bar">
-            <div class="title">🤖 Titan Agent + Native AI</div>
-            <div class="badge">Live</div>
+            <div class="title">🤖 Titan Agent + AI</div>
+            <div class="badge">Live Controller</div>
           </div>
           <div class="chat-box">
             <input type="text" id="chatMsg" class="chat-input" placeholder="Talk with AI or type command...">
@@ -324,11 +351,19 @@ function webInventoryPlugin(bot, customOptions = {}) {
           </div>
           <div class="ctrl-wrapper">
             <div class="dpad">
-              <div></div><button class="ctrl-btn" onpointerdown="startMove('forward')" onpointerup="stopMove('forward')" onpointerleave="stopMove('forward')">⬆️</button><div></div>
+              <div></div>
+              <button class="ctrl-btn" onpointerdown="startMove('forward')" onpointerup="stopMove('forward')" onpointerleave="stopMove('forward')">⬆️</button>
+              <div></div>
               <button class="ctrl-btn" onpointerdown="startMove('left')" onpointerup="stopMove('left')" onpointerleave="stopMove('left')">⬅️</button>
               <button class="ctrl-btn" onclick="jump()">🦘</button>
               <button class="ctrl-btn" onpointerdown="startMove('right')" onpointerup="stopMove('right')" onpointerleave="stopMove('right')">➡️</button>
-              <div></div><button class="ctrl-btn" onpointerdown="startMove('back')" onpointerup="stopMove('back')" onpointerleave="stopMove('back')">⬇️</button><div></div>
+              <div></div>
+              <button class="ctrl-btn" onpointerdown="startMove('back')" onpointerup="stopMove('back')" onpointerleave="stopMove('back')">⬇️</button>
+              <div></div>
+            </div>
+            <div>
+               <button class="action-btn" style="background:#16a34a;" onclick="jump()">Jump</button>
+               <button class="action-btn" style="background:#b45309;" id="sneakBtn" onclick="toggleSneak()">Sneak: OFF</button>
             </div>
           </div>
           <div class="action-grid">
@@ -338,56 +373,103 @@ function webInventoryPlugin(bot, customOptions = {}) {
             <button class="act-btn btn-fish" id="fishBtn" onclick="send('toggle_fish')">🎣 Auto Fish: OFF</button>
             <button class="act-btn btn-farm" id="farmBtn" onclick="send('toggle_farm')">🌾 Auto Farm: OFF</button>
             <button class="act-btn btn-build" onclick="send('build_house')">🏠 Build House</button>
-            <button class="act-btn btn-stop" onclick="send('stop')">🛑 Stop All</button>
+            <button class="act-btn btn-stop" onclick="send('stop')">🛑 Stop All Actions</button>
           </div>
-          <div class="radar-card"><canvas id="radarCanvas" width="280" height="280"></canvas></div>
+          
+          <div class="radar-card">
+            <canvas id="radarCanvas" width="280" height="280"></canvas>
+            <div class="radar-legend">
+              <div><span class="dot" style="background:#22c55e;"></span> Bot</div>
+              <div><span class="dot" style="background:#38bdf8;"></span> Players</div>
+              <div><span class="dot" style="background:#ef4444;"></span> Hostile Mobs</div>
+            </div>
+          </div>
+
           <div class="meters">
-            <div class="meter"><div class="meter-val hp-col" id="hp">20 / 20</div><div>❤️ HP</div></div>
-            <div class="meter"><div class="meter-val fd-col" id="food">20 / 20</div><div>🍖 Food</div></div>
+            <div class="meter"><div class="meter-val hp-col" id="hp">20 / 20</div><div style="font-size:11px;color:#6b7280;">❤️ Health</div></div>
+            <div class="meter"><div class="meter-val fd-col" id="food">20 / 20</div><div style="font-size:11px;color:#6b7280;">🍖 Hunger</div></div>
           </div>
+
+          <div class="grid-title">Main Inventory</div>
           <div class="grid" id="mainGrid"></div>
-          <div class="grid" id="hotbarGrid" style="margin-top:5px;"></div>
+          <div class="grid-title">Hotbar</div>
+          <div class="grid" id="hotbarGrid"></div>
         </div>
+
         <script>
           const socket = io();
           const canvas = document.getElementById('radarCanvas');
           const ctx = canvas.getContext('2d');
-          const cX = canvas.width / 2, cY = canvas.height / 2, scale = 5;
-          const main = document.getElementById('mainGrid'), hotbar = document.getElementById('hotbarGrid');
+          const cX = canvas.width / 2;
+          const cY = canvas.height / 2;
+          const scale = 5;
+          let isSneaking = false;
+
+          const main = document.getElementById('mainGrid');
+          const hotbar = document.getElementById('hotbarGrid');
           for (let i = 9; i <= 35; i++) main.innerHTML += '<div class="slot" id="s-' + i + '"></div>';
           for (let i = 36; i <= 44; i++) hotbar.innerHTML += '<div class="slot" id="s-' + i + '"></div>';
 
           function startMove(dir) { socket.emit('control_move', { direction: dir, state: true }); }
           function stopMove(dir) { socket.emit('control_move', { direction: dir, state: false }); }
           function jump() { socket.emit('control_jump'); }
+          function toggleSneak() {
+            isSneaking = !isSneaking;
+            document.getElementById('sneakBtn').innerText = 'Sneak: ' + (isSneaking ? 'ON' : 'OFF');
+            socket.emit('control_sneak', { state: isSneaking });
+          }
+
           function sendChat() {
             const input = document.getElementById('chatMsg');
-            if (input.value.trim()) { socket.emit('send_chat', { message: input.value.trim() }); input.value = ''; }
+            if (input.value.trim()) { 
+              socket.emit('send_chat', { message: input.value.trim() }); 
+              input.value = ''; 
+            }
           }
           document.getElementById('chatMsg').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendChat(); });
 
           socket.on('radar', data => {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#1f2937';
+            
+            // Draw rings
+            [25, 55, 85, 115].forEach(r => {
+              ctx.beginPath(); ctx.arc(cX, cY, r, 0, Math.PI * 2); ctx.stroke();
+            });
+
+            // Draw entities
             data.entities.forEach(e => {
-              const pX = cX + (e.x - data.bot.x) * scale, pY = cY + (e.z - data.bot.z) * scale;
+              const pX = cX + (e.x - data.bot.x) * scale;
+              const pY = cY + (e.z - data.bot.z) * scale;
               if (pX >= 0 && pX <= canvas.width && pY >= 0 && pY <= canvas.height) {
                 ctx.fillStyle = e.type === 'player' ? '#38bdf8' : '#ef4444';
                 ctx.beginPath(); ctx.arc(pX, pY, 4, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#f8fafc';
+                ctx.font = 'bold 9.5px sans-serif';
+                ctx.fillText(e.name, pX + 6, pY + 3);
               }
             });
-            ctx.fillStyle = '#22c55e'; ctx.beginPath(); ctx.arc(cX, cY, 5, 0, Math.PI * 2); ctx.fill();
+
+            // Draw bot
+            ctx.fillStyle = '#22c55e'; 
+            ctx.beginPath(); ctx.arc(cX, cY, 5, 0, Math.PI * 2); ctx.fill();
           });
 
           socket.on('sync', data => {
             if (data.hp !== undefined) document.getElementById('hp').innerText = Math.round(data.hp) + ' / 20';
             if (data.food !== undefined) document.getElementById('food').innerText = Math.round(data.food) + ' / 20';
+            
             for (let i = 9; i <= 44; i++) {
               const el = document.getElementById('s-' + i);
               if (!el) continue;
               const item = data.items.find(x => x.slot === i);
               if (item) {
                 el.innerHTML = '<span class="item-name">' + item.name.replace(/_/g, ' ') + '</span>' + (item.count > 1 ? '<span class="item-count">' + item.count + '</span>' : '');
-              } else { el.innerHTML = ''; }
+                el.style.background = '#1e293b';
+              } else { 
+                el.innerHTML = ''; 
+                el.style.background = '#111827';
+              }
             }
           });
 
@@ -432,6 +514,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
     syncState();
     socket.on('control_move', data => bot.setControlState(data.direction, !!data.state));
     socket.on('control_jump', () => { bot.setControlState('jump', true); setTimeout(() => bot.setControlState('jump', false), 350); });
+    socket.on('control_sneak', data => bot.setControlState('sneak', !!data.state));
     socket.on('send_chat', async data => {
       if (data && data.message) {
         const reply = await askAiBrain(data.message, { hp: bot.health, food: bot.food, guard: botState.guardMode, afk: botState.antiAfk });
@@ -478,7 +561,7 @@ if (require.main === module) {
       port: PORT_ENDPOINT,
       username: BOT_IDENTITY,
       checkTimeoutInterval: 120000,
-      version: false // Yeh auto-detect karega 1.26.2 ya koi bhi version
+      version: false // Auto-detect version
     });
 
     bot.loadPlugin(pathfinder); bot.loadPlugin(collectBlock); bot.loadPlugin(autoEat); bot.loadPlugin(pvp);
@@ -563,10 +646,6 @@ if (require.main === module) {
           await bot.collectBlock.collect(targets);
           bot.chat("Mining complete!");
         } catch (e) { bot.chat(`Error: ${e.message}`); }
-      }
-      else if (cmd === 'dropall') {
-        for (const item of bot.inventory.items()) { try { await bot.tossStack(item); } catch (e) {} }
-        bot.chat("Sari inventory drop kar di!");
       }
       else {
         if (message.toLowerCase().includes('nokar') || message.toLowerCase().includes('bot')) {
