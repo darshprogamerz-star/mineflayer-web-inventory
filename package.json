@@ -1,12 +1,13 @@
 {
   "name": "mineflayer-web-inventory",
-  "version": "2.0.0",
-  "description": "Smart Minecraft Companion & Web Dashboard Agent",
+  "version": "3.5.0",
+  "description": "Smart Minecraft Autonomous Companion with Discord Bridge & Web Center",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
+    "discord.js": "^14.14.1",
     "express": "^4.18.2",
     "lodash": "^4.17.21",
     "minecraft-assets": "^1.6.0",
