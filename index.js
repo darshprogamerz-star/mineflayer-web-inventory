@@ -1,7 +1,6 @@
 /**
- * Master Autonomous Minecraft Companion & Web Operations Center
- * Features: Web Controller + 2D Radar + Anti-AFK Wander + Bodyguard Guard + Chest Dump + Auto-Farm + Auto-Fish
- * Version: 9.0.0-Titan
+ * Master Autonomous Minecraft Companion & Discord Bridge
+ * Version: 10.0.0-Titan-Discord
  */
 
 const http = require('http');
@@ -9,6 +8,7 @@ const express = require('express');
 const socketIo = require('socket.io');
 const mineflayer = require('mineflayer');
 const { Vec3 } = require('vec3');
+const { Client, GatewayIntentBits } = require('discord.js');
 
 // Plugins
 const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
@@ -42,6 +42,38 @@ const BLOCK_ALIASES = {
 };
 
 /**
+ * Discord Bot Setup
+ */
+const discordClient = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
+});
+
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN || '';
+const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID || '';
+
+let discordChannel = null;
+
+if (DISCORD_TOKEN) {
+  discordClient.login(DISCORD_TOKEN).catch(err => {
+    console.error('[DISCORD ERROR] Login fail:', err.message);
+  });
+
+  discordClient.once('ready', async () => {
+    console.log(`[DISCORD LIVE] Logged in as ${discordClient.user.tag}`);
+    if (DISCORD_CHANNEL_ID) {
+      discordChannel = await discordClient.channels.fetch(DISCORD_CHANNEL_ID).catch(() => null);
+      if (discordChannel) {
+        discordChannel.send('🟢 **Nokar Bot Online ho gaya hai!** Minecraft bridge connected.');
+      }
+    }
+  });
+}
+
+/**
  * Combat & Tool Utilities
  */
 async function equipBestWeapon(bot) {
@@ -69,17 +101,16 @@ async function equipBestTool(bot, block) {
 }
 
 /**
- * Anti-AFK Wander Engine (Keeps bot active, never gets kicked)
+ * Anti-AFK Wander Engine
  */
 function startAntiAfk(bot) {
   botState.antiAfk = true;
-  bot.chat("Anti-AFK Wander mode ON kar diya! Main ghoomta rahunga.");
+  bot.chat("Anti-AFK Wander mode ON kar diya!");
   const homePos = bot.entity.position.clone();
 
   botState.antiAfkInterval = setInterval(async () => {
     if (!botState.antiAfk || botState.followingPlayer || botState.guardMode) return;
     try {
-      // Random coordinates around current area (-6 to +6)
       const dx = Math.floor(Math.random() * 12) - 6;
       const dz = Math.floor(Math.random() * 12) - 6;
       const targetPos = homePos.offset(dx, 0, dz);
@@ -110,7 +141,6 @@ function startGuardMode(bot) {
   botState.guardInterval = setInterval(async () => {
     if (!botState.guardMode) return;
 
-    // Filter nearby dangerous hostiles
     const hostiles = ['zombie', 'skeleton', 'spider', 'creeper', 'enderman', 'drowned', 'husk'];
     const target = bot.nearestEntity(e => {
       if (e.type !== 'mob') return false;
@@ -136,7 +166,7 @@ function stopGuardMode(bot) {
 }
 
 /**
- * Chest Deposit Routine (Dump All Loot into Nearest Chest)
+ * Chest Deposit Routine
  */
 async function dumpToChest(bot) {
   const mcData = require('minecraft-data')(bot.version);
@@ -146,16 +176,15 @@ async function dumpToChest(bot) {
   });
 
   if (!chestBlock) {
-    return bot.chat("Paas me koi Chest ya Barrel nahi mila (6 blocks ke andar)!");
+    return bot.chat("Paas me koi Chest ya Barrel nahi mila!");
   }
 
-  bot.chat("Chest me sara saman daal raha hoon...");
+  bot.chat("Chest me sara saman deposit kar raha hoon...");
   try {
     const chest = await bot.openChest(chestBlock);
     const items = bot.inventory.items();
 
     for (const item of items) {
-      // Don't deposit vital equipment
       if (item.name.includes('sword') || item.name.includes('pickaxe') || item.name.includes('helmet') || item.name.includes('chestplate')) continue;
       try {
         await chest.deposit(item.type, null, item.count);
@@ -163,9 +192,9 @@ async function dumpToChest(bot) {
       } catch (e) {}
     }
     chest.close();
-    bot.chat("Sara saman chest me safely store ho gaya!");
+    bot.chat("Sara saman chest me deposit ho gaya!");
   } catch (err) {
-    bot.chat(`Chest use karne me problem: ${err.message}`);
+    bot.chat(`Chest error: ${err.message}`);
   }
 }
 
@@ -184,7 +213,7 @@ async function startFishing(bot) {
     if (!botState.isFishing) return;
     try {
       await bot.fish();
-      cast(); // Recast upon catch
+      cast();
     } catch (err) {
       if (botState.isFishing) setTimeout(cast, 2000);
     }
@@ -197,7 +226,7 @@ function stopFishing(bot) {
 }
 
 /**
- * 4x4 House Construction Routine
+ * 4x4 Solid House Construction Routine
  */
 async function executeHouseBuild(bot) {
   const getBuildBlock = () => bot.inventory.items().find(i => 
@@ -322,7 +351,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
         <script src="/socket.io/socket.io.js"></script>
         <style>
           * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
-          body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #070a13; color: #e2e8f0; display: flex; justify-content: center; padding: 14px; }
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #070a13; color: #e2e8f0; display: flex; justify-content: center; padding: 14px; }
           .panel { width: 100%; max-width: 700px; background: #111827; border-radius: 14px; border: 1px solid #1f2937; padding: 18px; box-shadow: 0 20px 40px rgba(0,0,0,0.7); }
           .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
           .title { font-size: 19px; font-weight: bold; color: #38bdf8; display: flex; align-items: center; gap: 8px; }
@@ -420,7 +449,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
             <button class="act-btn btn-stop" onclick="send('stop')">🛑 Stop All Actions</button>
           </div>
 
-          <!-- 2D Radar -->
+          <!-- 2D Radar With Bold Names -->
           <div class="radar-card">
             <canvas id="radarCanvas" width="280" height="280"></canvas>
             <div class="radar-legend">
@@ -477,6 +506,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
 
           document.getElementById('chatMsg').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendChat(); });
 
+          // Radar Display with Entity Names
           socket.on('radar', data => {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.strokeStyle = '#1f2937';
@@ -490,9 +520,15 @@ function webInventoryPlugin(bot, customOptions = {}) {
               if (pX >= 0 && pX <= canvas.width && pY >= 0 && pY <= canvas.height) {
                 ctx.fillStyle = e.type === 'player' ? '#38bdf8' : '#ef4444';
                 ctx.beginPath(); ctx.arc(pX, pY, 4, 0, Math.PI * 2); ctx.fill();
+
+                // Name Label Render
+                ctx.fillStyle = '#f8fafc';
+                ctx.font = 'bold 9.5px sans-serif';
+                ctx.fillText(e.name || e.type, pX + 6, pY + 3);
               }
             });
 
+            // Bot at Center
             ctx.fillStyle = '#22c55e';
             ctx.beginPath(); ctx.arc(cX, cY, 5, 0, Math.PI * 2); ctx.fill();
             const headX = cX - Math.sin(data.bot.yaw) * 12;
@@ -611,17 +647,23 @@ function webInventoryPlugin(bot, customOptions = {}) {
     io.emit('sync', { hp: bot.health, food: bot.food, items });
   }
 
-  // Live Radar Engine (Every 500ms)
+  // Live Radar Engine (Broadcasting names + entities)
   setInterval(() => {
     if (!bot.entity) return;
     const nearby = [];
     for (const id in bot.entities) {
       const e = bot.entities[id];
-      if (e === bot.entity) continue;
+      if (!e || e === bot.entity) continue;
       if (e.type === 'player' || e.type === 'mob') {
         const dist = bot.entity.position.distanceTo(e.position);
         if (dist <= 28) {
-          nearby.push({ type: e.type, x: e.position.x, z: e.position.z });
+          const entityName = e.username || e.displayName || e.name || (e.type === 'player' ? 'Player' : 'Mob');
+          nearby.push({ 
+            name: entityName, 
+            type: e.type, 
+            x: e.position.x, 
+            z: e.position.z 
+          });
         }
       }
     }
@@ -690,38 +732,84 @@ if (require.main === module) {
       }
     });
 
-    // In-game Chat Commands Listener
+    // Discord -> Minecraft Message Bridge & Commands Listener
+    discordClient.on('messageCreate', async (msg) => {
+      if (msg.author.bot) return;
+      if (DISCORD_CHANNEL_ID && msg.channel.id !== DISCORD_CHANNEL_ID) return;
+
+      const content = msg.content.trim();
+
+      // Remote Discord Commands
+      if (content === '!status') {
+        const hp = bot.health ? Math.round(bot.health) : 'N/A';
+        const food = bot.food ? Math.round(bot.food) : 'N/A';
+        const pos = bot.entity ? `${Math.round(bot.entity.position.x)}, ${Math.round(bot.entity.position.y)}, ${Math.round(bot.entity.position.z)}` : 'Unknown';
+        return msg.reply(`📊 **Bot Status:**\n❤️ Health: ${hp}/20 | 🍖 Hunger: ${food}/20\n📍 Position: ${pos}\n🛡️ Guard Mode: ${botState.guardMode ? 'ON' : 'OFF'}\n🚶 Anti-AFK: ${botState.antiAfk ? 'ON' : 'OFF'}`);
+      }
+
+      if (content === '!afk') {
+        if (botState.antiAfk) { stopAntiAfk(bot); msg.reply('🚶 Anti-AFK Wander OFF kar diya.'); }
+        else { startAntiAfk(bot); msg.reply('🚶 Anti-AFK Wander ON kar diya.'); }
+        return;
+      }
+
+      if (content === '!guard') {
+        if (botState.guardMode) { stopGuardMode(bot); msg.reply('🛡️ Guard Mode OFF.'); }
+        else { startGuardMode(bot); msg.reply('🛡️ Guard Mode ON. Area protected!'); }
+        return;
+      }
+
+      if (content === '!stop') {
+        botState.followingPlayer = null;
+        stopAntiAfk(bot);
+        stopGuardMode(bot);
+        stopFishing(bot);
+        bot.clearControlStates();
+        bot.pathfinder.stop();
+        bot.pvp.stop();
+        bot.chat('Stopped by Discord.');
+        return msg.reply('🛑 Saare tasks cancel kar diye.');
+      }
+
+      if (content.startsWith('!say ')) {
+        const toSay = content.slice(5);
+        bot.chat(toSay);
+        return msg.react('💬');
+      }
+
+      // Normal Message Forwarding
+      bot.chat(`[Discord] ${msg.author.username}: ${content}`);
+    });
+
+    // Minecraft -> Discord Message Bridge & In-game Commands
     bot.on('chat', async (username, message) => {
       if (username === bot.username) return;
+
+      // Forward in-game chat to Discord
+      if (discordChannel) {
+        discordChannel.send(`**<${username}>** ${message}`).catch(() => {});
+      }
+
       const args = message.trim().split(/\s+/);
       const cmd = args[0].toLowerCase();
       const fullText = message.toLowerCase();
       const mcData = require('minecraft-data')(bot.version);
 
-      // Anti-AFK Trigger ("move around" ya "afk")
       if (fullText.includes('move around') || cmd === 'afk') {
         if (botState.antiAfk) stopAntiAfk(bot);
         else startAntiAfk(bot);
       }
-
-      // Guard Mode Trigger ("guard" ya "protect")
       else if (cmd === 'guard' || cmd === 'protect') {
         if (botState.guardMode) stopGuardMode(bot);
         else startGuardMode(bot);
       }
-
-      // Chest Dump Trigger ("deposit" ya "chest")
       else if (cmd === 'deposit' || cmd === 'chest') {
         dumpToChest(bot);
       }
-
-      // Fishing Trigger ("fish")
       else if (cmd === 'fish') {
         if (botState.isFishing) stopFishing(bot);
         else startFishing(bot);
       }
-
-      // Follow Trigger
       else if (cmd === 'come' || cmd === 'follow') {
         stopAntiAfk(bot);
         const player = bot.players[username]?.entity;
@@ -733,8 +821,6 @@ if (require.main === module) {
           bot.chat(`Tracking @${username}...`);
         }
       }
-
-      // Stop Trigger
       else if (cmd === 'stop') {
         botState.followingPlayer = null;
         stopAntiAfk(bot);
@@ -748,13 +834,9 @@ if (require.main === module) {
         clearTimeout(botState.farmingInterval);
         bot.chat("Ruk gaya!");
       }
-
-      // House Build
       else if (cmd === 'build' && args[1] === 'house') {
         executeHouseBuild(bot);
       }
-
-      // Crafting
       else if (cmd === 'craft' && args[1]) {
         const itemName = args[1].toLowerCase();
         const count = parseInt(args[2]) || 1;
@@ -777,8 +859,6 @@ if (require.main === module) {
           bot.chat(`Crafting error: ${err.message}`);
         }
       }
-
-      // Mining / Resource Collection
       else if (cmd === 'collect' || cmd === 'mine') {
         let blockQuery = args[1]?.toLowerCase();
         let count = parseInt(args[2]) || 1;
@@ -800,11 +880,9 @@ if (require.main === module) {
           await bot.collectBlock.collect(targets);
           bot.chat("Mining complete!");
         } catch (e) {
-          bot.chat(`Collection error: ${e.message}`);
+          bot.chat(`Error: ${e.message}`);
         }
       }
-
-      // Drop All
       else if (cmd === 'dropall') {
         for (const item of bot.inventory.items()) {
           try { await bot.tossStack(item); } catch (e) {}
