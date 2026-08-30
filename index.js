@@ -1,7 +1,22 @@
 /**
  * ============================================================================
- * TITAN AUTONOMOUS COMPANION & OPERATIONS CONSOLE
- * VERSION: 29.0.0 (AUTO MOB DEFENSE, SMART GATHER-CRAFT & X-RAY HUD)
+ * TITAN AUTONOMOUS MINECRAFT COMPANION & OPERATIONS CONSOLE
+ * VERSION: 30.0.0 (MASTER UNCOMPRESSED FULL EDITION - 1300+ LINES)
+ * ============================================================================
+ * Included Systems:
+ * - Direct Raycast Combat & Auto Mob Defense Engine
+ * - Smart Multi-Step Gather & Crafting System (Wood to Tools)
+ * - 2D Dynamic Compass Radar (N, S, E, W + Live Distance Tracking)
+ * - X-Ray Filter Toggle (Show All vs Mobs/Players Only)
+ * - Bot Live Exact Position (X, Y, Z) HUD Badge
+ * - Container Scanner (Chests, Trapped Chests, Barrels)
+ * - Full Ore Classifier (Diamond, Ancient Debris, Gold, Iron, Copper, Lapis, Coal)
+ * - Complete Interactive Web Dashboard with Fixed Square Inventory Grid
+ * - Manual Combat Buttons (Attack, Mine, Place) & Responsive D-Pad Controls
+ * - Autonomous Routines: Guard Mode, Auto-Farm, Auto-Fish, 4x4 House Builder
+ * - Dual-Way Discord Synchronizer (!ai, !status, !say, !craft)
+ * - Universal Server Message Listener (Aternos / Geyser / Java Supported)
+ * - Gemini 2.5 Flash Native AI Engine with Direct Endpoint Authentication
  * ============================================================================
  */
 
@@ -18,7 +33,9 @@ const collectBlock = require('mineflayer-collectblock').plugin;
 const autoEat = require('mineflayer-auto-eat').plugin;
 
 /**
- * Global Machine State Tracking
+ * ============================================================================
+ * GLOBAL STATE MACHINE
+ * ============================================================================
  */
 const botState = {
   autoEat: true,
@@ -27,7 +44,7 @@ const botState = {
   followingPlayer: null,
   antiAfk: false,
   antiAfkInterval: null,
-  guardMode: true, // Default ON for active mob defense
+  guardMode: true,
   guardInterval: null,
   guardOrigin: null,
   isFishing: false,
@@ -35,30 +52,108 @@ const botState = {
 };
 
 /**
- * Hostile Mobs Definition List
+ * ============================================================================
+ * HOSTILE MOBS REGISTRY
+ * ============================================================================
  */
 const HOSTILE_MOBS = [
-  'zombie', 'skeleton', 'spider', 'creeper', 'drowned', 
-  'husk', 'enderman', 'witch', 'slime', 'phantom', 'pillager',
-  'cave_spider', 'zombified_piglin', 'piglin_brute'
+  'zombie',
+  'skeleton',
+  'spider',
+  'creeper',
+  'drowned',
+  'husk',
+  'enderman',
+  'witch',
+  'slime',
+  'phantom',
+  'pillager',
+  'cave_spider',
+  'zombified_piglin',
+  'piglin_brute',
+  'stray',
+  'wither_skeleton'
 ];
 
 /**
- * Mining Block Aliases Database
+ * ============================================================================
+ * MINING BLOCK ALIASES DATABASE
+ * ============================================================================
  */
 const BLOCK_ALIASES = {
-  'diamond': ['diamond_ore', 'deepslate_diamond_ore', 'diamond_block'],
-  'iron': ['iron_ore', 'deepslate_iron_ore', 'raw_iron_block'],
-  'gold': ['gold_ore', 'deepslate_gold_ore', 'raw_gold_block'],
-  'coal': ['coal_ore', 'deepslate_coal_ore', 'coal_block'],
-  'copper': ['copper_ore', 'deepslate_copper_ore', 'raw_copper_block'],
-  'lapis': ['lapis_ore', 'deepslate_lapis_ore', 'lapis_block'],
-  'redstone': ['redstone_ore', 'deepslate_redstone_ore', 'redstone_block'],
-  'wood': ['oak_log', 'birch_log', 'spruce_log', 'dark_oak_log', 'jungle_log', 'acacia_log', 'mangrove_log', 'cherry_log'],
-  'tree': ['oak_log', 'birch_log', 'spruce_log', 'dark_oak_log'],
-  'stone': ['stone', 'cobblestone', 'deepslate', 'cobbled_deepslate', 'andesite', 'diorite', 'granite'],
-  'dirt': ['dirt', 'grass_block', 'coarse_dirt'],
-  'sand': ['sand', 'red_sand']
+  'diamond': [
+    'diamond_ore',
+    'deepslate_diamond_ore',
+    'diamond_block'
+  ],
+  'iron': [
+    'iron_ore',
+    'deepslate_iron_ore',
+    'raw_iron_block'
+  ],
+  'gold': [
+    'gold_ore',
+    'deepslate_gold_ore',
+    'nether_gold_ore',
+    'raw_gold_block'
+  ],
+  'coal': [
+    'coal_ore',
+    'deepslate_coal_ore',
+    'coal_block'
+  ],
+  'copper': [
+    'copper_ore',
+    'deepslate_copper_ore',
+    'raw_copper_block'
+  ],
+  'lapis': [
+    'lapis_ore',
+    'deepslate_lapis_ore',
+    'lapis_block'
+  ],
+  'redstone': [
+    'redstone_ore',
+    'deepslate_redstone_ore',
+    'redstone_block'
+  ],
+  'debris': [
+    'ancient_debris'
+  ],
+  'wood': [
+    'oak_log',
+    'birch_log',
+    'spruce_log',
+    'dark_oak_log',
+    'jungle_log',
+    'acacia_log',
+    'mangrove_log',
+    'cherry_log'
+  ],
+  'tree': [
+    'oak_log',
+    'birch_log',
+    'spruce_log',
+    'dark_oak_log'
+  ],
+  'stone': [
+    'stone',
+    'cobblestone',
+    'deepslate',
+    'cobbled_deepslate',
+    'andesite',
+    'diorite',
+    'granite'
+  ],
+  'dirt': [
+    'dirt',
+    'grass_block',
+    'coarse_dirt'
+  ],
+  'sand': [
+    'sand',
+    'red_sand'
+  ]
 };
 
 /**
@@ -69,6 +164,7 @@ const BLOCK_ALIASES = {
 async function askAiBrain(promptText, botStatus) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
+    console.error('[AI CONFIG] GEMINI_API_KEY environment variable is not defined.');
     return "Boss, Render me GEMINI_API_KEY set nahi hai!";
   }
 
@@ -76,23 +172,40 @@ async function askAiBrain(promptText, botStatus) {
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${cleanKey}`;
 
   try {
-    const userPrompt = `You are 'Nokar', an intelligent Minecraft companion. Reply strictly in short natural Hinglish under 20 words. Current HP: ${botStatus.hp}/20. User says: "${promptText}"`;
+    const userPrompt = `You are 'Nokar', an intelligent, humorous, and loyal Minecraft companion. Reply strictly in short natural Hinglish under 20 words. Current Status -> Health: ${botStatus.hp}/20, Food: ${botStatus.food}/20. User says: "${promptText}"`;
+    
     const response = await fetch(endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: userPrompt }] }]
+        contents: [
+          {
+            parts: [
+              {
+                text: userPrompt
+              }
+            ]
+          }
+        ]
       })
     });
 
     const data = await response.json();
+
     if (data.error) {
+      console.error('[GEMINI API ERROR]', data.error.message);
       return `Google Error: ${data.error.message.substring(0, 30)}`;
     }
 
-    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    return reply ? reply.trim() : "Haan boss, sun raha hoon!";
+    if (data.candidates && data.candidates[0]?.content?.parts?.[0]?.text) {
+      return data.candidates[0].content.parts[0].text.trim();
+    }
+
+    return "Haan boss, sun raha hoon bolo!";
   } catch (err) {
+    console.error('[GEMINI NETWORK ERROR]', err.message);
     return `Net Error: ${err.message.substring(0, 20)}`;
   }
 }
@@ -116,15 +229,15 @@ let discordChannel = null;
 
 if (DISCORD_TOKEN) {
   discordClient.login(DISCORD_TOKEN).catch(err => {
-    console.error('[DISCORD LOGIN ERROR]', err.message);
+    console.error('[DISCORD ERROR] Login Failed:', err.message);
   });
 
   discordClient.once('ready', async () => {
-    console.log(`[DISCORD CONNECTED] ${discordClient.user.tag}`);
+    console.log(`[DISCORD LIVE] Connected successfully as ${discordClient.user.tag}`);
     if (DISCORD_CHANNEL_ID) {
       discordChannel = await discordClient.channels.fetch(DISCORD_CHANNEL_ID).catch(() => null);
       if (discordChannel) {
-        discordChannel.send('🟢 **Titan Autonomous System V29 is Ready & Active!**');
+        discordChannel.send('🟢 **Titan Autonomous System V30 is Ready & Active!**');
       }
     }
   });
@@ -142,8 +255,16 @@ async function equipBestWeapon(bot) {
   if (!weapons.length) return false;
 
   const weaponPriority = [
-    'netherite_sword', 'diamond_sword', 'iron_sword', 'stone_sword', 'wooden_sword',
-    'netherite_axe', 'diamond_axe', 'iron_axe', 'stone_axe', 'wooden_axe'
+    'netherite_sword',
+    'diamond_sword',
+    'iron_sword',
+    'stone_sword',
+    'wooden_sword',
+    'netherite_axe',
+    'diamond_axe',
+    'iron_axe',
+    'stone_axe',
+    'wooden_axe'
   ];
 
   weapons.sort((a, b) => {
@@ -157,7 +278,7 @@ async function equipBestWeapon(bot) {
   try {
     await bot.equip(weapons[0], 'hand');
     return true;
-  } catch (e) {
+  } catch (err) {
     return false;
   }
 }
@@ -165,21 +286,26 @@ async function equipBestWeapon(bot) {
 async function equipBestTool(bot, targetBlock) {
   if (!targetBlock) return;
   const items = bot.inventory.items();
-  let requiredTool = '';
+  let requiredToolType = '';
 
   const blockName = targetBlock.name;
   if (blockName.includes('ore') || blockName.includes('stone') || blockName.includes('cobble') || blockName.includes('deepslate')) {
-    requiredTool = 'pickaxe';
+    requiredToolType = 'pickaxe';
   } else if (blockName.includes('log') || blockName.includes('wood') || blockName.includes('plank')) {
-    requiredTool = 'axe';
-  } else if (blockName.includes('dirt') || blockName.includes('sand') || blockName.includes('gravel')) {
-    requiredTool = 'shovel';
+    requiredToolType = 'axe';
+  } else if (blockName.includes('dirt') || blockName.includes('sand') || blockName.includes('gravel') || blockName.includes('clay')) {
+    requiredToolType = 'shovel';
+  } else if (blockName.includes('wheat') || blockName.includes('carrots') || blockName.includes('potatoes')) {
+    requiredToolType = 'hoe';
   }
 
-  if (!requiredTool) return;
-  const toolItem = items.find(i => i.name.includes(requiredTool));
-  if (toolItem) {
-    try { await bot.equip(toolItem, 'hand'); } catch (err) {}
+  if (!requiredToolType) return;
+
+  const tools = items.filter(item => item.name.includes(requiredToolType));
+  if (tools.length > 0) {
+    try {
+      await bot.equip(tools[0], 'hand');
+    } catch (err) {}
   }
 }
 
@@ -189,12 +315,14 @@ async function equipBestTool(bot, targetBlock) {
  * ============================================================================
  */
 function startMobDefense(bot) {
-  if (botState.guardInterval) clearInterval(botState.guardInterval);
+  if (botState.guardInterval) {
+    clearInterval(botState.guardInterval);
+  }
 
   botState.guardInterval = setInterval(async () => {
     if (botState.isBusyCrafting || !bot.entity) return;
 
-    // Detect Hostile Mobs within 10 Blocks
+    // Scan for hostile mobs within 10 blocks
     const targetMob = bot.nearestEntity(entity => {
       if (!entity || entity.type !== 'mob') return false;
       const entityName = (entity.name || entity.displayName || '').toLowerCase();
@@ -204,9 +332,9 @@ function startMobDefense(bot) {
 
     if (targetMob) {
       await equipBestWeapon(bot);
-      const dist = bot.entity.position.distanceTo(targetMob.position);
+      const distance = bot.entity.position.distanceTo(targetMob.position);
 
-      if (dist > 3.2) {
+      if (distance > 3.2) {
         bot.pathfinder.setGoal(new goals.GoalFollow(targetMob, 2.5), false);
       } else {
         const aimOffset = targetMob.height ? targetMob.height * 0.75 : 1.2;
@@ -217,9 +345,15 @@ function startMobDefense(bot) {
   }, 350);
 }
 
+function stopMobDefense() {
+  if (botState.guardInterval) {
+    clearInterval(botState.guardInterval);
+  }
+}
+
 /**
  * ============================================================================
- * SMART AUTO-GATHER & MULTI-STEP CRAFTING ENGINE
+ * SMART MULTI-STEP GATHER & CRAFTING SYSTEM
  * ============================================================================
  */
 async function smartGatherAndCraft(bot, targetItemName, count = 1) {
@@ -238,13 +372,13 @@ async function smartGatherAndCraft(bot, targetItemName, count = 1) {
 
   bot.chat(`🛠️ Checking materials for ${count}x ${targetItemName}...`);
 
-  // Step 1: Wood / Log Gathering Subroutine if wood components are needed
+  // Step 1: Wood & Log Gathering Subroutine
   async function ensureLogsAvailable(minLogs = 3) {
     const currentLogs = bot.inventory.items().filter(i => i.name.includes('_log'));
     const totalLogs = currentLogs.reduce((acc, cur) => acc + cur.count, 0);
 
     if (totalLogs < minLogs) {
-      bot.chat(`🌲 Lakdi kam hai, ped kaatne jaa raha hoon...`);
+      bot.chat(`🌲 Lakdi kam hai, ped dhoondh raha hoon...`);
       const logIds = BLOCK_ALIASES['wood'].map(n => mcData.blocksByName[n]?.id).filter(Boolean);
       const woodBlocks = bot.findBlocks({ matching: logIds, maxDistance: 32, count: 6 });
 
@@ -266,7 +400,7 @@ async function smartGatherAndCraft(bot, targetItemName, count = 1) {
     return true;
   }
 
-  // Step 2: Planks Converter Helper
+  // Step 2: Planks Conversion Helper
   async function craftPlanksIfRequired() {
     const planks = bot.inventory.items().filter(i => i.name.includes('_planks'));
     const totalPlanks = planks.reduce((acc, cur) => acc + cur.count, 0);
@@ -285,7 +419,7 @@ async function smartGatherAndCraft(bot, targetItemName, count = 1) {
     }
   }
 
-  // Step 3: Ensure Crafting Table Available
+  // Step 3: Ensure Crafting Table Available & Placed
   async function ensureCraftingTable() {
     let tableBlock = bot.findBlock({ matching: mcData.blocksByName.crafting_table?.id, maxDistance: 5 });
     if (tableBlock) return tableBlock;
@@ -301,7 +435,6 @@ async function smartGatherAndCraft(bot, targetItemName, count = 1) {
       }
     }
 
-    // Place Crafting Table on ground
     const ground = bot.findBlock({
       matching: (b) => b.name !== 'air' && b.name !== 'water' && b.name !== 'lava',
       maxDistance: 4
@@ -321,7 +454,19 @@ async function smartGatherAndCraft(bot, targetItemName, count = 1) {
 
   // Execution Flow
   try {
-    if (targetItemName.includes('wood') || targetItemName.includes('plank') || targetItemName.includes('stick') || targetItemName.includes('chest') || targetItemName.includes('crafting_table') || targetItemName.includes('door') || targetItemName.includes('boat')) {
+    if (
+      targetItemName.includes('wood') ||
+      targetItemName.includes('plank') ||
+      targetItemName.includes('stick') ||
+      targetItemName.includes('chest') ||
+      targetItemName.includes('crafting_table') ||
+      targetItemName.includes('door') ||
+      targetItemName.includes('boat') ||
+      targetItemName.includes('pickaxe') ||
+      targetItemName.includes('sword') ||
+      targetItemName.includes('axe') ||
+      targetItemName.includes('shovel')
+    ) {
       await ensureLogsAvailable(3);
       await craftPlanksIfRequired();
     }
@@ -356,14 +501,14 @@ async function smartGatherAndCraft(bot, targetItemName, count = 1) {
  */
 function startAntiAfk(bot) {
   botState.antiAfk = true;
-  bot.chat("🚶 Anti-AFK Active!");
+  bot.chat("🚶 Anti-AFK Wander ON!");
   const origin = bot.entity.position.clone();
 
   botState.antiAfkInterval = setInterval(async () => {
     if (!botState.antiAfk || botState.followingPlayer || botState.isBusyCrafting) return;
     try {
-      const offX = Math.floor(Math.random() * 10) - 5;
-      const offZ = Math.floor(Math.random() * 10) - 5;
+      const offX = Math.floor(Math.random() * 12) - 6;
+      const offZ = Math.floor(Math.random() * 12) - 6;
       bot.setControlState('jump', Math.random() > 0.5);
       setTimeout(() => bot.setControlState('jump', false), 300);
       await bot.pathfinder.goto(new goals.GoalNear(origin.x + offX, origin.y, origin.z + offZ, 1));
@@ -373,16 +518,20 @@ function startAntiAfk(bot) {
 
 function stopAntiAfk(bot) {
   botState.antiAfk = false;
-  if (botState.antiAfkInterval) clearInterval(botState.antiAfkInterval);
+  if (botState.antiAfkInterval) {
+    clearInterval(botState.antiAfkInterval);
+  }
   bot.clearControlStates();
 }
 
 async function startFishing(bot) {
   const rod = bot.inventory.items().find(i => i.name === 'fishing_rod');
-  if (!rod) return bot.chat("Mere paas Fishing Rod nahi hai boss!");
+  if (!rod) {
+    return bot.chat("Mere paas Fishing Rod nahi hai boss!");
+  }
 
   botState.isFishing = true;
-  bot.chat("🎣 Fishing start ho gayi...");
+  bot.chat("🎣 Fishing shuru kar raha hoon...");
   await bot.equip(rod, 'hand');
 
   async function cast() {
@@ -391,9 +540,12 @@ async function startFishing(bot) {
       await bot.fish();
       cast();
     } catch (err) {
-      if (botState.isFishing) setTimeout(cast, 2000);
+      if (botState.isFishing) {
+        setTimeout(cast, 2000);
+      }
     }
   }
+
   cast();
 }
 
@@ -417,7 +569,9 @@ async function runFarmLoop(bot) {
       await bot.collectBlock.collect(matureCrops.map(pos => bot.blockAt(pos)));
       for (const pos of matureCrops) {
         const soil = bot.blockAt(pos.offset(0, -1, 0));
-        const seed = bot.inventory.items().find(i => i.name.includes('seeds') || i.name === 'carrot' || i.name === 'potato');
+        const seed = bot.inventory.items().find(i => 
+          i.name.includes('seeds') || i.name === 'carrot' || i.name === 'potato'
+        );
         if (soil && soil.name === 'farmland' && seed) {
           await bot.equip(seed, 'hand');
           await bot.placeBlock(soil, new Vec3(0, 1, 0)).catch(() => {});
@@ -433,10 +587,14 @@ async function runFarmLoop(bot) {
 }
 
 async function executeHouseBuild(bot) {
-  const getMat = () => bot.inventory.items().find(i => i.name.includes('plank') || i.name.includes('cobble') || i.name.includes('stone') || i.name.includes('dirt'));
-  if (!getMat()) return bot.chat("Ghar banane ke liye blocks nahi hain!");
+  const getMat = () => bot.inventory.items().find(i => 
+    i.name.includes('plank') || i.name.includes('cobble') || i.name.includes('stone') || i.name.includes('dirt')
+  );
+  if (!getMat()) {
+    return bot.chat("Ghar banane ke liye blocks nahi hain!");
+  }
 
-  bot.chat("🏠 Shelter banana shuru...");
+  bot.chat("🏠 Shelter banana shuru kar raha hoon...");
   const base = bot.entity.position.floored().offset(1, 0, 1);
   const layout = [];
 
@@ -452,21 +610,31 @@ async function executeHouseBuild(bot) {
   }
 
   for (let x = 0; x < 4; x++) {
-    for (let z = 0; z < 4; z++) layout.push(base.offset(x, 3, z));
+    for (let z = 0; z < 4; z++) {
+      layout.push(base.offset(x, 3, z));
+    }
   }
 
   for (const pos of layout) {
     const cur = bot.blockAt(pos);
     if (!cur || cur.name !== 'air') continue;
     const blockItem = getMat();
-    if (!blockItem) return bot.chat("Blocks khatam ho gaye!");
+    if (!blockItem) {
+      return bot.chat("Blocks khatam ho gaye!");
+    }
 
     try {
       await bot.equip(blockItem, 'hand');
       if (bot.entity.position.distanceTo(pos) > 4.5) {
         await bot.pathfinder.goto(new goals.GoalNear(pos.x, pos.y, pos.z, 3)).catch(() => {});
       }
-      const neighbors = [pos.offset(0, -1, 0), pos.offset(1, 0, 0), pos.offset(-1, 0, 0), pos.offset(0, 0, 1), pos.offset(0, 0, -1)];
+      const neighbors = [
+        pos.offset(0, -1, 0),
+        pos.offset(1, 0, 0),
+        pos.offset(-1, 0, 0),
+        pos.offset(0, 0, 1),
+        pos.offset(0, 0, -1)
+      ];
       for (const n of neighbors) {
         const nb = bot.blockAt(n);
         if (nb && nb.name !== 'air') {
@@ -484,17 +652,25 @@ async function executeHouseBuild(bot) {
 async function dumpToChest(bot) {
   const mcData = require('minecraft-data')(bot.version);
   const container = bot.findBlock({
-    matching: [mcData.blocksByName.chest?.id, mcData.blocksByName.barrel?.id].filter(Boolean),
+    matching: [
+      mcData.blocksByName.chest?.id,
+      mcData.blocksByName.trapped_chest?.id,
+      mcData.blocksByName.barrel?.id
+    ].filter(Boolean),
     maxDistance: 6
   });
 
-  if (!container) return bot.chat("Paas me Chest ya Barrel nahi hai!");
+  if (!container) {
+    return bot.chat("Paas me Chest ya Barrel nahi hai!");
+  }
 
   bot.chat("📦 Saman chest me rakh raha hoon...");
   try {
     const window = await bot.openChest(container);
     for (const item of bot.inventory.items()) {
-      if (item.name.includes('sword') || item.name.includes('pickaxe') || item.name.includes('helmet') || item.name.includes('chestplate')) continue;
+      if (item.name.includes('sword') || item.name.includes('pickaxe') || item.name.includes('helmet') || item.name.includes('chestplate')) {
+        continue;
+      }
       try {
         await window.deposit(item.type, null, item.count);
         await bot.waitForTicks(2);
@@ -509,7 +685,7 @@ async function dumpToChest(bot) {
 
 /**
  * ============================================================================
- * WEB OPERATIONS CONSOLE (WITH X-RAY FILTER & EXACT BOT HUD)
+ * WEB OPERATIONS CONSOLE (FULL HTML, CSS & JAVASCRIPT UI)
  * ============================================================================
  */
 function webInventoryPlugin(bot, customOptions = {}) {
@@ -527,30 +703,147 @@ function webInventoryPlugin(bot, customOptions = {}) {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-        <title>Titan Master Console V29</title>
+        <title>Titan Master Console V30</title>
         <script src="/socket.io/socket.io.js"></script>
         <style>
-          * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
-          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #070a13; color: #e2e8f0; display: flex; justify-content: center; padding: 10px; }
-          .panel { width: 100%; max-width: 520px; background: #111827; border-radius: 14px; border: 1px solid #1f2937; padding: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.7); }
-          .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-          .title { font-size: 17px; font-weight: 800; color: #38bdf8; }
+          * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+          }
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #070a13;
+            color: #e2e8f0;
+            display: flex;
+            justify-content: center;
+            padding: 10px;
+          }
+          .panel {
+            width: 100%;
+            max-width: 520px;
+            background: #111827;
+            border-radius: 14px;
+            border: 1px solid #1f2937;
+            padding: 14px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+          }
+          .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+          }
+          .title {
+            font-size: 17px;
+            font-weight: 800;
+            color: #38bdf8;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
           
-          .chat-box { display: flex; gap: 6px; margin-bottom: 12px; }
-          .chat-input { flex: 1; padding: 10px 12px; background: #030712; border: 1px solid #374151; border-radius: 8px; color: #fff; font-size: 13px; outline: none; }
-          .chat-btn { background: #0284c7; padding: 10px 16px; border: none; border-radius: 8px; color: white; font-weight: bold; cursor: pointer; font-size: 13px; }
+          .chat-box {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 12px;
+          }
+          .chat-input {
+            flex: 1;
+            padding: 10px 12px;
+            background: #030712;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 13px;
+            outline: none;
+          }
+          .chat-input:focus {
+            border-color: #38bdf8;
+          }
+          .chat-btn {
+            background: #0284c7;
+            padding: 10px 16px;
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 13px;
+          }
           
-          .ctrl-wrapper { background: #030712; border: 1px solid #1f2937; border-radius: 10px; padding: 10px; margin-bottom: 12px; display: flex; flex-direction: column; align-items: center; }
-          .dpad { display: grid; grid-template-columns: repeat(3, 46px); grid-template-rows: repeat(3, 46px); gap: 5px; margin-bottom: 10px; }
-          .ctrl-btn { background: #1f2937; border: 1px solid #374151; border-radius: 8px; color: white; font-size: 17px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
-          .ctrl-btn:active { background: #0284c7; transform: scale(0.95); }
+          .ctrl-wrapper {
+            background: #030712;
+            border: 1px solid #1f2937;
+            border-radius: 10px;
+            padding: 10px;
+            margin-bottom: 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+          }
+          .dpad {
+            display: grid;
+            grid-template-columns: repeat(3, 46px);
+            grid-template-rows: repeat(3, 46px);
+            gap: 5px;
+            margin-bottom: 10px;
+          }
+          .ctrl-btn {
+            background: #1f2937;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            color: white;
+            font-size: 17px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+          }
+          .ctrl-btn:active {
+            background: #0284c7;
+            transform: scale(0.95);
+          }
           
-          .manual-actions { display: flex; gap: 6px; width: 100%; max-width: 270px; }
-          .manual-btn { padding: 9px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; color: white; flex: 1; font-size: 12px; }
+          .manual-actions {
+            display: flex;
+            gap: 6px;
+            width: 100%;
+            max-width: 270px;
+          }
+          .manual-btn {
+            padding: 9px;
+            border-radius: 8px;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+            color: white;
+            flex: 1;
+            font-size: 12px;
+          }
+          .manual-btn:active {
+            transform: scale(0.95);
+          }
 
-          .action-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-bottom: 12px; }
-          .act-btn { padding: 10px; border: none; border-radius: 8px; font-weight: bold; color: white; font-size: 11px; cursor: pointer; }
-          .act-btn:active { transform: scale(0.97); }
+          .action-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px;
+            margin-bottom: 12px;
+          }
+          .act-btn {
+            padding: 10px;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            color: white;
+            font-size: 11px;
+            cursor: pointer;
+          }
+          .act-btn:active {
+            transform: scale(0.97);
+          }
           
           .btn-guard { background: #dc2626; } 
           .btn-afk { background: #6366f1; } 
@@ -561,25 +854,167 @@ function webInventoryPlugin(bot, customOptions = {}) {
           .btn-drop { background: #e11d48; } 
           .btn-stop { background: #991b1b; grid-column: span 2; padding: 12px; font-size: 13px; }
           
-          .bot-pos-bar { width: 100%; background: #030712; border: 1px solid #1e293b; padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; color: #38bdf8; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-          .radar-card { display: flex; flex-direction: column; align-items: center; background: #030712; border-radius: 10px; border: 1px solid #1f2937; padding: 10px; margin-bottom: 12px; }
-          #radarCanvas { background: #050811; border-radius: 8px; border: 1px solid #374151; width: 280px; height: 280px; }
-          .radar-filter-btn { width: 100%; margin-top: 8px; padding: 8px; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #38bdf8; font-size: 11px; font-weight: bold; cursor: pointer; }
-          .radar-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; font-size: 10px; margin-top: 8px; color: #9ca3af; }
-          .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 3px; vertical-align: middle; }
+          .bot-pos-bar {
+            width: 100%;
+            background: #030712;
+            border: 1px solid #1e293b;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #38bdf8;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+          }
+
+          .radar-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #030712;
+            border-radius: 10px;
+            border: 1px solid #1f2937;
+            padding: 10px;
+            margin-bottom: 12px;
+          }
+          #radarCanvas {
+            background: #050811;
+            border-radius: 8px;
+            border: 1px solid #374151;
+            width: 280px;
+            height: 280px;
+            display: block;
+          }
           
-          .radar-list { width: 100%; max-height: 120px; overflow-y: auto; background: #0b1120; border-radius: 6px; padding: 6px 8px; margin-top: 8px; font-size: 11px; border: 1px solid #1e293b; }
-          .radar-item { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #1e293b; }
+          .radar-filter-btn {
+            width: 100%;
+            margin-top: 8px;
+            padding: 8px;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            color: #38bdf8;
+            font-size: 11px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+          }
+          .radar-filter-btn:active {
+            transform: scale(0.98);
+          }
           
-          .meters { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 12px; }
-          .meter { background: #030712; padding: 8px; border-radius: 8px; text-align: center; border: 1px solid #1f2937; }
-          .meter-val { font-size: 16px; font-weight: bold; }
+          .radar-legend {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px;
+            font-size: 10px;
+            margin-top: 8px;
+            color: #9ca3af;
+          }
+          .dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 3px;
+            vertical-align: middle;
+          }
           
-          .section-title { font-size: 11px; font-weight: bold; color: #94a3b8; margin: 8px 0 4px; text-transform: uppercase; }
-          .grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; background: #030712; padding: 6px; border-radius: 8px; border: 1px solid #1f2937; margin-bottom: 8px; }
-          .slot { width: 100%; aspect-ratio: 1 / 1; background: #1e293b; border: 1px solid #334155; border-radius: 4px; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: pointer; }
-          .item-name { font-size: 8px; color: #f1f5f9; text-align: center; line-height: 1.1; padding: 2px; }
-          .item-count { position: absolute; bottom: 1px; right: 2px; font-size: 9px; font-weight: 900; color: #38bdf8; background: rgba(0,0,0,0.7); border-radius: 2px; padding: 0 2px; }
+          .radar-list {
+            width: 100%;
+            max-height: 120px;
+            overflow-y: auto;
+            background: #0b1120;
+            border-radius: 6px;
+            padding: 6px 8px;
+            margin-top: 8px;
+            font-size: 11px;
+            border: 1px solid #1e293b;
+          }
+          .radar-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 3px 0;
+            border-bottom: 1px solid #1e293b;
+          }
+          
+          .meters {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            margin-bottom: 12px;
+          }
+          .meter {
+            background: #030712;
+            padding: 8px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #1f2937;
+          }
+          .meter-val {
+            font-size: 16px;
+            font-weight: bold;
+          }
+          
+          .section-title {
+            font-size: 11px;
+            font-weight: bold;
+            color: #94a3b8;
+            margin: 8px 0 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+          .grid {
+            display: grid;
+            grid-template-columns: repeat(9, 1fr);
+            gap: 4px;
+            background: #030712;
+            padding: 6px;
+            border-radius: 8px;
+            border: 1px solid #1f2937;
+            margin-bottom: 8px;
+          }
+          .slot {
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 4px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            cursor: pointer;
+          }
+          .slot:active {
+            border-color: #38bdf8;
+            background: #0f172a;
+            transform: scale(0.95);
+          }
+          .item-name {
+            font-size: 8px;
+            color: #f1f5f9;
+            text-align: center;
+            line-height: 1.1;
+            padding: 2px;
+            word-break: break-word;
+            font-weight: 500;
+          }
+          .item-count {
+            position: absolute;
+            bottom: 1px;
+            right: 2px;
+            font-size: 9px;
+            font-weight: 900;
+            color: #38bdf8;
+            background: rgba(0,0,0,0.7);
+            border-radius: 2px;
+            padding: 0 2px;
+          }
         </style>
       </head>
       <body>
@@ -624,6 +1059,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
             <button class="act-btn btn-stop" onclick="send('stop')">🛑 Stop All</button>
           </div>
 
+          <!-- Bot Live Position Badge -->
           <div class="bot-pos-bar">
             <span>📍 My Position:</span>
             <span id="botCoords">X: 0 | Y: 0 | Z: 0</span>
@@ -631,7 +1067,10 @@ function webInventoryPlugin(bot, customOptions = {}) {
 
           <div class="radar-card">
             <canvas id="radarCanvas" width="280" height="280"></canvas>
+            
+            <!-- X-Ray Filter Toggle Button -->
             <button class="radar-filter-btn" id="xrayToggleBtn" onclick="toggleXray()">🔍 Ores & Chests: ON</button>
+            
             <div class="radar-legend">
               <div><span class="dot" style="background:#22c55e;"></span>Bot</div>
               <div><span class="dot" style="background:#38bdf8;"></span>Player</div>
@@ -644,8 +1083,9 @@ function webInventoryPlugin(bot, customOptions = {}) {
                 <div><span class="dot" style="background:#8b5cf6;"></span>Debris</div>
               </span>
             </div>
+            
             <div class="radar-list" id="radarList">
-              <div style="color:#64748b; text-align:center;">Scanning area surroundings...</div>
+              <div style="color:#64748b; text-align:center;">Scanning surroundings...</div>
             </div>
           </div>
 
@@ -654,7 +1094,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
             <div class="meter"><div class="meter-val" style="color:#fbbf24;" id="food">20 / 20</div><div style="font-size:10px;">🍖 Hunger</div></div>
           </div>
 
-          <div class="section-title">Hotbar</div>
+          <div class="section-title">Hotbar (Tap: Equip | Double Tap: Drop)</div>
           <div class="grid" id="hotbarGrid"></div>
           
           <div class="section-title">Main Inventory Storage</div>
@@ -666,13 +1106,18 @@ function webInventoryPlugin(bot, customOptions = {}) {
           const canvas = document.getElementById('radarCanvas');
           const ctx = canvas.getContext('2d');
           const cX = 140, cY = 140, scale = 5.5;
+
           let showOresAndChests = true;
 
           const main = document.getElementById('mainGrid');
           const hotbar = document.getElementById('hotbarGrid');
 
-          for (let i = 36; i <= 44; i++) hotbar.innerHTML += '<div class="slot" id="s-' + i + '" onclick="slotClick(' + i + ')" ondblclick="slotDrop(' + i + ')"></div>';
-          for (let i = 9; i <= 35; i++) main.innerHTML += '<div class="slot" id="s-' + i + '" onclick="slotClick(' + i + ')" ondblclick="slotDrop(' + i + ')"></div>';
+          for (let i = 36; i <= 44; i++) {
+            hotbar.innerHTML += '<div class="slot" id="s-' + i + '" onclick="slotClick(' + i + ')" ondblclick="slotDrop(' + i + ')"></div>';
+          }
+          for (let i = 9; i <= 35; i++) {
+            main.innerHTML += '<div class="slot" id="s-' + i + '" onclick="slotClick(' + i + ')" ondblclick="slotDrop(' + i + ')"></div>';
+          }
 
           function slotClick(id) { socket.emit('equip_slot', { slot: id }); }
           function slotDrop(id) { socket.emit('drop_slot', { slot: id }); }
@@ -709,20 +1154,26 @@ function webInventoryPlugin(bot, customOptions = {}) {
           socket.on('radar', data => {
             ctx.clearRect(0, 0, 280, 280);
 
+            // Update Bot Coordinates
             if (data.bot) {
               document.getElementById('botCoords').innerText = 'X: ' + Math.round(data.bot.x) + ' | Y: ' + Math.round(data.bot.y) + ' | Z: ' + Math.round(data.bot.z);
             }
 
+            // Concentric Rings
             ctx.strokeStyle = '#1e293b';
             ctx.lineWidth = 1;
             [35, 70, 105].forEach(r => {
-              ctx.beginPath(); ctx.arc(cX, cY, r, 0, Math.PI * 2); ctx.stroke();
+              ctx.beginPath();
+              ctx.arc(cX, cY, r, 0, Math.PI * 2);
+              ctx.stroke();
             });
 
+            // Grid Crosshairs
             ctx.strokeStyle = '#0f172a';
             ctx.beginPath(); ctx.moveTo(cX, 0); ctx.lineTo(cX, 280); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(0, cY); ctx.lineTo(280, cY); ctx.stroke();
 
+            // Compass Markers
             ctx.fillStyle = '#64748b';
             ctx.font = 'bold 10px sans-serif';
             ctx.textAlign = 'center';
@@ -735,7 +1186,9 @@ function webInventoryPlugin(bot, customOptions = {}) {
 
             data.entities.forEach(e => {
               const isOreOrChest = (e.type !== 'player' && e.type !== 'mob');
-              if (!showOresAndChests && isOreOrChest) return;
+              if (!showOresAndChests && isOreOrChest) {
+                return;
+              }
 
               const dx = e.x - data.bot.x;
               const dz = e.z - data.bot.z;
@@ -750,6 +1203,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
               else if (dx < -2) dir += 'West';
               if (!dir) dir = 'Near';
 
+              // Color Mapping
               let color = '#38bdf8';
               if (e.type === 'mob') color = '#ef4444';
               else if (e.type === 'chest') color = '#eab308';
@@ -761,15 +1215,26 @@ function webInventoryPlugin(bot, customOptions = {}) {
               else if (e.type === 'lapis') color = '#2563eb';
               else if (e.type === 'coal') color = '#64748b';
 
+              // Clean Glowing Dots on Canvas
               if (pX >= 4 && pX <= 276 && pY >= 4 && pY <= 276) {
                 ctx.fillStyle = color;
                 ctx.beginPath();
                 const radius = (e.type === 'player' || e.type === 'mob') ? 5 : 3.5;
                 ctx.arc(pX, pY, radius, 0, Math.PI * 2);
                 ctx.fill();
+
+                if (e.type === 'diamond' || e.type === 'debris' || e.type === 'player') {
+                  ctx.strokeStyle = color;
+                  ctx.lineWidth = 1;
+                  ctx.beginPath();
+                  ctx.arc(pX, pY, radius + 2, 0, Math.PI * 2);
+                  ctx.stroke();
+                }
               }
 
+              // Build Exact Coordinates HUD Item
               let exactCoords = '[X:' + Math.round(e.x) + ' Y:' + (e.y !== undefined ? Math.round(e.y) : '?') + ' Z:' + Math.round(e.z) + ']';
+              
               listHTML += '<div class="radar-item">' +
                 '<span style="color:' + color + '; font-weight:600;">● ' + e.name + '</span>' +
                 '<span style="color:#94a3b8;">' + dist + 'm ' + dir + ' ' + exactCoords + '</span>' +
@@ -778,8 +1243,14 @@ function webInventoryPlugin(bot, customOptions = {}) {
 
             document.getElementById('radarList').innerHTML = listHTML || '<div style="color:#64748b; text-align:center;">No targets nearby</div>';
 
+            // Center Bot Marker
             ctx.fillStyle = '#22c55e';
-            ctx.beginPath(); ctx.arc(cX, cY, 5, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath();
+            ctx.arc(cX, cY, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
           });
 
           socket.on('sync', data => {
@@ -829,8 +1300,11 @@ function webInventoryPlugin(bot, customOptions = {}) {
     }
     if (act === 'toggle_guard') {
       botState.guardMode = !botState.guardMode;
-      if (botState.guardMode) startMobDefense(bot);
-      else if (botState.guardInterval) clearInterval(botState.guardInterval);
+      if (botState.guardMode) {
+        startMobDefense(bot);
+      } else {
+        stopMobDefense();
+      }
       return res.json({ success: true, state: botState.guardMode });
     }
     if (act === 'toggle_fish') {
@@ -839,8 +1313,11 @@ function webInventoryPlugin(bot, customOptions = {}) {
     }
     if (act === 'toggle_farm') {
       botState.autoFarm = !botState.autoFarm;
-      if (botState.autoFarm) runFarmLoop(bot);
-      else clearTimeout(botState.farmingInterval);
+      if (botState.autoFarm) {
+        runFarmLoop(bot);
+      } else {
+        clearTimeout(botState.farmingInterval);
+      }
       return res.json({ success: true, state: botState.autoFarm });
     }
     if (act === 'build_house') {
@@ -950,11 +1427,13 @@ function webInventoryPlugin(bot, customOptions = {}) {
     io.emit('sync', { hp: bot.health, food: bot.food, items });
   }
 
+  // Active Radar Tick (De-duplicated Ore & Entity Classifier)
   setInterval(() => {
     if (!bot.entity) return;
     const nearby = [];
     const mcData = require('minecraft-data')(bot.version);
 
+    // 1. Scan Players & Mobs
     for (const id in bot.entities) {
       const e = bot.entities[id];
       if (!e || e === bot.entity) continue;
@@ -971,23 +1450,55 @@ function webInventoryPlugin(bot, customOptions = {}) {
       }
     }
 
+    // 2. Scan Containers
     if (mcData) {
-      const containerIds = [mcData.blocksByName.chest?.id, mcData.blocksByName.barrel?.id].filter(Boolean);
-      const foundChests = bot.findBlocks({ matching: containerIds, maxDistance: 16, count: 6 });
-      foundChests.forEach(pos => nearby.push({ name: 'Chest', type: 'chest', x: pos.x, y: pos.y, z: pos.z }));
+      const containerIds = [
+        mcData.blocksByName.chest?.id,
+        mcData.blocksByName.trapped_chest?.id,
+        mcData.blocksByName.barrel?.id
+      ].filter(Boolean);
 
+      const foundChests = bot.findBlocks({ matching: containerIds, maxDistance: 16, count: 8 });
+      const addedChests = [];
+
+      foundChests.forEach(pos => {
+        const isCloseToExisting = addedChests.some(cPos => cPos.distanceTo(pos) < 2);
+        if (!isCloseToExisting) {
+          addedChests.push(pos);
+          nearby.push({ name: 'Chest', type: 'chest', x: pos.x, y: pos.y, z: pos.z });
+        }
+      });
+
+      // 3. Scan Specific Ores with Clustering Logic
       const oreList = [
         { key: 'diamond', name: 'Diamond Ore', ids: [mcData.blocksByName.diamond_ore?.id, mcData.blocksByName.deepslate_diamond_ore?.id] },
+        { key: 'debris', name: 'Ancient Debris', ids: [mcData.blocksByName.ancient_debris?.id] },
+        { key: 'gold', name: 'Gold Ore', ids: [mcData.blocksByName.gold_ore?.id, mcData.blocksByName.deepslate_gold_ore?.id, mcData.blocksByName.nether_gold_ore?.id] },
         { key: 'iron', name: 'Iron Ore', ids: [mcData.blocksByName.iron_ore?.id, mcData.blocksByName.deepslate_iron_ore?.id] },
-        { key: 'gold', name: 'Gold Ore', ids: [mcData.blocksByName.gold_ore?.id, mcData.blocksByName.deepslate_gold_ore?.id] },
+        { key: 'copper', name: 'Copper Ore', ids: [mcData.blocksByName.copper_ore?.id, mcData.blocksByName.deepslate_copper_ore?.id] },
+        { key: 'lapis', name: 'Lapis Ore', ids: [mcData.blocksByName.lapis_ore?.id, mcData.blocksByName.deepslate_lapis_ore?.id] },
         { key: 'coal', name: 'Coal Ore', ids: [mcData.blocksByName.coal_ore?.id, mcData.blocksByName.deepslate_coal_ore?.id] }
       ];
 
       oreList.forEach(oreGroup => {
         const validIds = oreGroup.ids.filter(Boolean);
         if (validIds.length > 0) {
-          const blocks = bot.findBlocks({ matching: validIds, maxDistance: 16, count: 6 });
-          blocks.forEach(pos => nearby.push({ name: oreGroup.name, type: oreGroup.key, x: pos.x, y: pos.y, z: pos.z }));
+          const blocks = bot.findBlocks({ matching: validIds, maxDistance: 16, count: 12 });
+          const trackedVeins = [];
+
+          blocks.forEach(pos => {
+            const isNearVein = trackedVeins.some(vPos => vPos.distanceTo(pos) < 2.5);
+            if (!isNearVein) {
+              trackedVeins.push(pos);
+              nearby.push({
+                name: oreGroup.name,
+                type: oreGroup.key,
+                x: pos.x,
+                y: pos.y,
+                z: pos.z
+              });
+            }
+          });
         }
       });
     }
@@ -1048,7 +1559,7 @@ if (require.main === module) {
         bannedFood: ['rotten_flesh', 'spider_eye', 'poisonous_potato']
       };
 
-      // Auto Defense Shuru
+      // Start Automatic Mob Defense immediately
       startMobDefense(bot);
     });
 
@@ -1095,7 +1606,7 @@ if (require.main === module) {
       const cleanMsg = message.trim();
       const lower = cleanMsg.toLowerCase();
 
-      // Extract command parts if present
+      // Extract command text
       const match = cleanMsg.match(/(?:<[^>]+>\s*|\[[^\]]+\]\s*|\w+:\s*)?(.*)/);
       const actualText = match ? match[1].trim() : cleanMsg;
       const args = actualText.split(/\s+/);
@@ -1126,8 +1637,11 @@ if (require.main === module) {
       }
       else if (cmd === 'guard' || cmd === 'defense') {
         botState.guardMode = !botState.guardMode;
-        if (botState.guardMode) startMobDefense(bot);
-        else if (botState.guardInterval) clearInterval(botState.guardInterval);
+        if (botState.guardMode) {
+          startMobDefense(bot);
+        } else {
+          stopMobDefense();
+        }
         bot.chat(`🛡️ Auto Mob Defense: ${botState.guardMode ? 'ON' : 'OFF'}`);
       }
       else if (cmd === 'afk') {
@@ -1138,8 +1652,11 @@ if (require.main === module) {
       }
       else if (cmd === 'farm') {
         botState.autoFarm = !botState.autoFarm;
-        if (botState.autoFarm) runFarmLoop(bot);
-        else clearTimeout(botState.farmingInterval);
+        if (botState.autoFarm) {
+          runFarmLoop(bot);
+        } else {
+          clearTimeout(botState.farmingInterval);
+        }
         bot.chat(`🌾 Auto Farm: ${botState.autoFarm ? 'ON' : 'OFF'}`);
       }
       else if (cmd === 'deposit' || cmd === 'chest') {
@@ -1157,7 +1674,9 @@ if (require.main === module) {
         let targetIds = targetNames.map(name => mcData.blocksByName[name]?.id).filter(Boolean);
 
         const found = bot.findBlocks({ matching: targetIds, maxDistance: 32, count });
-        if (!found.length) return bot.chat(`Aas-paas ${blockQuery} nahi mila.`);
+        if (!found.length) {
+          return bot.chat(`Aas-paas ${blockQuery} nahi mila.`);
+        }
 
         bot.chat(`${found.length} ${blockQuery} tod raha hoon...`);
         try {
@@ -1168,6 +1687,12 @@ if (require.main === module) {
         } catch (e) {
           bot.chat(`Mining Error: ${e.message}`);
         }
+      }
+      else if (cmd === 'dropall') {
+        for (const item of bot.inventory.items()) {
+          try { await bot.tossStack(item); } catch (e) {}
+        }
+        bot.chat("Sari inventory drop kar di!");
       }
       else {
         if (lower.includes('nokar') || lower.includes('bot') || lower.startsWith('!ai')) {
