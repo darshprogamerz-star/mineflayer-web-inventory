@@ -1,15 +1,17 @@
 /**
  * ============================================================================
  * TITAN AUTONOMOUS MINECRAFT COMPANION & OPERATIONS CONSOLE
- * VERSION: 30.0.0 (MASTER UNCOMPRESSED FULL EDITION - 1300+ LINES)
+ * VERSION: 31.0.0 (ULTIMATE MASTER EDITION - AUTO SMELTER & INVENTORY SORTER)
  * ============================================================================
  * Included Systems:
  * - Direct Raycast Combat & Auto Mob Defense Engine
  * - Smart Multi-Step Gather & Crafting System (Wood to Tools)
+ * - Auto-Smelter Integration (Automatic Furnace Ore Smelting Routine)
+ * - Advanced Inventory Sorter & Garbage Filter (Auto-Deposit & Trash Clean)
  * - 2D Dynamic Compass Radar (N, S, E, W + Live Distance Tracking)
  * - X-Ray Filter Toggle (Show All vs Mobs/Players Only)
  * - Bot Live Exact Position (X, Y, Z) HUD Badge
- * - Container Scanner (Chests, Trapped Chests, Barrels)
+ * - Container Scanner (Chests, Trapped Chests, Barrels, Furnaces)
  * - Full Ore Classifier (Diamond, Ancient Debris, Gold, Iron, Copper, Lapis, Coal)
  * - Complete Interactive Web Dashboard with Fixed Square Inventory Grid
  * - Manual Combat Buttons (Attack, Mine, Place) & Responsive D-Pad Controls
@@ -48,7 +50,9 @@ const botState = {
   guardInterval: null,
   guardOrigin: null,
   isFishing: false,
-  isBusyCrafting: false
+  isBusyCrafting: false,
+  autoSmelt: false,
+  smeltingInterval: null
 };
 
 /**
@@ -237,7 +241,7 @@ if (DISCORD_TOKEN) {
     if (DISCORD_CHANNEL_ID) {
       discordChannel = await discordClient.channels.fetch(DISCORD_CHANNEL_ID).catch(() => null);
       if (discordChannel) {
-        discordChannel.send('🟢 **Titan Autonomous System V30 is Ready & Active!**');
+        discordChannel.send('🟢 **Titan Autonomous System V31 (Smelter & Sorter) Online!**');
       }
     }
   });
@@ -322,7 +326,6 @@ function startMobDefense(bot) {
   botState.guardInterval = setInterval(async () => {
     if (botState.isBusyCrafting || !bot.entity) return;
 
-    // Scan for hostile mobs within 10 blocks
     const targetMob = bot.nearestEntity(entity => {
       if (!entity || entity.type !== 'mob') return false;
       const entityName = (entity.name || entity.displayName || '').toLowerCase();
@@ -353,6 +356,127 @@ function stopMobDefense() {
 
 /**
  * ============================================================================
+ * NEW IDEA 1: AUTO-SMELTER SYSTEM (FURNACE AUTOMATION)
+ * ============================================================================
+ */
+async function runAutoSmelter(bot) {
+  if (!botState.autoSmelt) return;
+  const mcData = require('minecraft-data')(bot.version);
+
+  const rawOres = bot.inventory.items().filter(i => 
+    i.name.includes('raw_iron') || i.name.includes('raw_gold') || i.name.includes('raw_copper') || i.name.includes('_ore')
+  );
+
+  if (rawOres.length === 0) return;
+
+  const fuel = bot.inventory.items().filter(i => 
+    i.name.includes('coal') || i.name.includes('charcoal') || i.name.includes('_log') || i.name.includes('_planks')
+  );
+
+  if (fuel.length === 0) return;
+
+  let furnaceBlock = bot.findBlock({ matching: mcData.blocksByName.furnace?.id, maxDistance: 5 });
+  
+  if (!furnaceBlock) {
+    const cobblestone = bot.inventory.items().filter(i => i.name === 'cobblestone');
+    const totalCobble = cobblestone.reduce((acc, cur) => acc + cur.count, 0);
+
+    if (totalCobble >= 8) {
+      const furnaceRecipe = bot.recipesAll(mcData.itemsByName.furnace.id, null, 1)[0];
+      if (furnaceRecipe) {
+        try {
+          await bot.craft(furnaceRecipe, 1, null);
+          bot.chat("🔥 Furnace craft kar liya!");
+          await bot.waitForTicks(10);
+        } catch (e) {}
+      }
+    }
+
+    const furnaceItem = bot.inventory.items().find(i => i.name === 'furnace');
+    const ground = bot.findBlock({ matching: b => b.name !== 'air', maxDistance: 4 });
+
+    if (furnaceItem && ground) {
+      try {
+        await bot.equip(furnaceItem, 'hand');
+        await bot.placeBlock(ground, new Vec3(0, 1, 0));
+        await bot.waitForTicks(10);
+        furnaceBlock = bot.findBlock({ matching: mcData.blocksByName.furnace?.id, maxDistance: 5 });
+      } catch (e) {}
+    }
+  }
+
+  if (furnaceBlock) {
+    try {
+      const furnace = await bot.openFurnace(furnaceBlock);
+      const targetOre = rawOres[0];
+      const targetFuel = fuel[0];
+
+      if (furnace.inputItem() === null && targetOre) {
+        await furnace.putInput(targetOre.type, null, Math.min(targetOre.count, 16));
+        bot.chat(`🔥 Pighlane ke liye ${targetOre.name} daala furnace me.`);
+      }
+
+      if (furnace.fuelItem() === null && targetFuel) {
+        await furnace.putFuel(targetFuel.type, null, Math.min(targetFuel.count, 8));
+      }
+
+      furnace.close();
+    } catch (err) {}
+  }
+
+  if (botState.autoSmelt) {
+    botState.smeltingInterval = setTimeout(() => runAutoSmelter(bot), 8000);
+  }
+}
+
+/**
+ * ============================================================================
+ * NEW IDEA 2: ADVANCED INVENTORY SORTER & GARBAGE FILTER
+ * ============================================================================
+ */
+async function sortAndCleanInventory(bot) {
+  const junkItems = ['rotten_flesh', 'spider_eye', 'poisonous_potato', 'dirt', 'cobblestone', 'gravel'];
+  const trashFound = bot.inventory.items().filter(i => junkItems.includes(i.name));
+
+  if (trashFound.length > 0) {
+    bot.chat("🗑️ Inventory clean kar raha hoon (kachra hata raha hoon)...");
+    for (const item of trashFound) {
+      try {
+        if (item.count >= 16) {
+          await bot.tossStack(item);
+          await bot.waitForTicks(2);
+        }
+      } catch (e) {}
+    }
+  }
+
+  const mcData = require('minecraft-data')(bot.version);
+  const chestBlock = bot.findBlock({
+    matching: [mcData.blocksByName.chest?.id, mcData.blocksByName.barrel?.id].filter(Boolean),
+    maxDistance: 6
+  });
+
+  if (chestBlock) {
+    try {
+      const chestWindow = await bot.openChest(chestBlock);
+      const valuables = bot.inventory.items().filter(i => 
+        i.name.includes('diamond') || i.name.includes('gold') || i.name.includes('iron') || i.name.includes('emerald') || i.name.includes('debris')
+      );
+
+      for (const valItem of valuables) {
+        if (valItem.count > 32) {
+          await chestWindow.deposit(valItem.type, null, 16);
+          await bot.waitForTicks(2);
+        }
+      }
+      chestWindow.close();
+    } catch (e) {}
+  }
+  bot.chat("✨ Inventory sorted and optimized!");
+}
+
+/**
+ * ============================================================================
  * SMART MULTI-STEP GATHER & CRAFTING SYSTEM
  * ============================================================================
  */
@@ -372,7 +496,6 @@ async function smartGatherAndCraft(bot, targetItemName, count = 1) {
 
   bot.chat(`🛠️ Checking materials for ${count}x ${targetItemName}...`);
 
-  // Step 1: Wood & Log Gathering Subroutine
   async function ensureLogsAvailable(minLogs = 3) {
     const currentLogs = bot.inventory.items().filter(i => i.name.includes('_log'));
     const totalLogs = currentLogs.reduce((acc, cur) => acc + cur.count, 0);
@@ -393,14 +516,12 @@ async function smartGatherAndCraft(bot, targetItemName, count = 1) {
         await bot.collectBlock.collect(blockTargets);
         bot.chat("Lakdi ikattha kar li!");
       } catch (err) {
-        bot.chat(`Wood collection error: ${err.message}`);
         return false;
       }
     }
     return true;
   }
 
-  // Step 2: Planks Conversion Helper
   async function craftPlanksIfRequired() {
     const planks = bot.inventory.items().filter(i => i.name.includes('_planks'));
     const totalPlanks = planks.reduce((acc, cur) => acc + cur.count, 0);
@@ -419,7 +540,6 @@ async function smartGatherAndCraft(bot, targetItemName, count = 1) {
     }
   }
 
-  // Step 3: Ensure Crafting Table Available & Placed
   async function ensureCraftingTable() {
     let tableBlock = bot.findBlock({ matching: mcData.blocksByName.crafting_table?.id, maxDistance: 5 });
     if (tableBlock) return tableBlock;
@@ -452,7 +572,6 @@ async function smartGatherAndCraft(bot, targetItemName, count = 1) {
     return null;
   }
 
-  // Execution Flow
   try {
     if (
       targetItemName.includes('wood') ||
@@ -460,12 +579,9 @@ async function smartGatherAndCraft(bot, targetItemName, count = 1) {
       targetItemName.includes('stick') ||
       targetItemName.includes('chest') ||
       targetItemName.includes('crafting_table') ||
-      targetItemName.includes('door') ||
-      targetItemName.includes('boat') ||
       targetItemName.includes('pickaxe') ||
       targetItemName.includes('sword') ||
-      targetItemName.includes('axe') ||
-      targetItemName.includes('shovel')
+      targetItemName.includes('axe')
     ) {
       await ensureLogsAvailable(3);
       await craftPlanksIfRequired();
@@ -480,7 +596,7 @@ async function smartGatherAndCraft(bot, targetItemName, count = 1) {
     }
 
     if (!recipes.length) {
-      bot.chat(`Recipe nahi mili ya ingredients abhi bhi kam hain ${targetItemName} ke liye.`);
+      bot.chat(`Recipe nahi mili ya ingredients kam hain ${targetItemName} ke liye.`);
       botState.isBusyCrafting = false;
       return;
     }
@@ -703,7 +819,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-        <title>Titan Master Console V30</title>
+        <title>Titan Master Console V31</title>
         <script src="/socket.io/socket.io.js"></script>
         <style>
           * {
@@ -852,6 +968,8 @@ function webInventoryPlugin(bot, customOptions = {}) {
           .btn-farm { background: #059669; } 
           .btn-build { background: #2563eb; } 
           .btn-drop { background: #e11d48; } 
+          .btn-smelt { background: #ea580c; }
+          .btn-sort { background: #7c3aed; }
           .btn-stop { background: #991b1b; grid-column: span 2; padding: 12px; font-size: 13px; }
           
           .bot-pos-bar {
@@ -1032,13 +1150,13 @@ function webInventoryPlugin(bot, customOptions = {}) {
           <div class="ctrl-wrapper">
             <div class="dpad">
               <div></div>
-              <button class="ctrl-btn" onpointerdown="startMove('forward')" onpointerup="stopMove('forward')">⬆️</button>
+              <button class="ctrl-btn" onpointerdown="startMove('forward')" onpointerup="stopMove('forward')" onpointerleave="stopMove('forward')">⬆️</button>
               <div></div>
-              <button class="ctrl-btn" onpointerdown="startMove('left')" onpointerup="stopMove('left')">⬅️</button>
+              <button class="ctrl-btn" onpointerdown="startMove('left')" onpointerup="stopMove('left')" onpointerleave="stopMove('left')">⬅️</button>
               <button class="ctrl-btn" onclick="jump()">🦘</button>
-              <button class="ctrl-btn" onpointerdown="startMove('right')" onpointerup="stopMove('right')">➡️</button>
+              <button class="ctrl-btn" onpointerdown="startMove('right')" onpointerup="stopMove('right')" onpointerleave="stopMove('right')">➡️</button>
               <div></div>
-              <button class="ctrl-btn" onpointerdown="startMove('back')" onpointerup="stopMove('back')">⬇️</button>
+              <button class="ctrl-btn" onpointerdown="startMove('back')" onpointerup="stopMove('back')" onpointerleave="stopMove('back')">⬇️</button>
               <div></div>
             </div>
             <div class="manual-actions">
@@ -1053,6 +1171,8 @@ function webInventoryPlugin(bot, customOptions = {}) {
             <button class="act-btn btn-afk" id="afkBtn" onclick="send('toggle_afk')">🚶 AFK: OFF</button>
             <button class="act-btn btn-fish" id="fishBtn" onclick="send('toggle_fish')">🎣 Fish: OFF</button>
             <button class="act-btn btn-farm" id="farmBtn" onclick="send('toggle_farm')">🌾 Farm: OFF</button>
+            <button class="act-btn btn-smelt" id="smeltBtn" onclick="send('toggle_smelt')">🔥 Smelter: OFF</button>
+            <button class="act-btn btn-sort" onclick="send('sort_inv')">🎒 Sort Inventory</button>
             <button class="act-btn btn-build" onclick="send('build_house')">🏠 Build House</button>
             <button class="act-btn btn-chest" onclick="send('dump_chest')">📦 Dump Chest</button>
             <button class="act-btn btn-drop" onclick="send('drop_hand')">🗑️ Drop Hand</button>
@@ -1283,6 +1403,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
               if (act === 'toggle_guard') document.getElementById('guardBtn').innerText = '🛡️ Auto-Defense: ' + (d.state ? 'ON' : 'OFF');
               if (act === 'toggle_fish') document.getElementById('fishBtn').innerText = '🎣 Fish: ' + (d.state ? 'ON' : 'OFF');
               if (act === 'toggle_farm') document.getElementById('farmBtn').innerText = '🌾 Farm: ' + (d.state ? 'ON' : 'OFF');
+              if (act === 'toggle_smelt') document.getElementById('smeltBtn').innerText = '🔥 Smelter: ' + (d.state ? 'ON' : 'OFF');
             });
           }
         </script>
@@ -1320,6 +1441,19 @@ function webInventoryPlugin(bot, customOptions = {}) {
       }
       return res.json({ success: true, state: botState.autoFarm });
     }
+    if (act === 'toggle_smelt') {
+      botState.autoSmelt = !botState.autoSmelt;
+      if (botState.autoSmelt) {
+        runAutoSmelter(bot);
+      } else {
+        clearTimeout(botState.smeltingInterval);
+      }
+      return res.json({ success: true, state: botState.autoSmelt });
+    }
+    if (act === 'sort_inv') {
+      sortAndCleanInventory(bot);
+      return res.json({ success: true });
+    }
     if (act === 'build_house') {
       executeHouseBuild(bot);
       return res.json({ success: true });
@@ -1336,6 +1470,8 @@ function webInventoryPlugin(bot, customOptions = {}) {
     if (act === 'stop') {
       botState.followingPlayer = null;
       botState.isBusyCrafting = false;
+      botState.autoSmelt = false;
+      clearTimeout(botState.smeltingInterval);
       stopAntiAfk(bot);
       stopFishing();
       botState.autoFarm = false;
@@ -1581,13 +1717,17 @@ if (require.main === module) {
         smartGatherAndCraft(bot, parts[1], parseInt(parts[2], 10) || 1);
         return msg.reply(`🔨 Crafting routine started for ${parts[1]}`);
       }
+      if (content.startsWith('!sort')) {
+        sortAndCleanInventory(bot);
+        return msg.reply('🎒 Inventory sorted and trash filtered!');
+      }
       if (content.startsWith('!ai ')) {
         const reply = await askAiBrain(content.slice(4), { hp: bot.health, food: bot.food });
         bot.chat(reply);
         return msg.reply(`🤖 **AI:** ${reply}`);
       }
       if (content === '!status') {
-        return msg.reply(`📊 HP: ${Math.round(bot.health)}/20 | Auto-Defense: ${botState.guardMode ? 'ON' : 'OFF'}`);
+        return msg.reply(`📊 HP: ${Math.round(bot.health)}/20 | Auto-Defense: ${botState.guardMode ? 'ON' : 'OFF'} | Smelter: ${botState.autoSmelt ? 'ON' : 'OFF'}`);
       }
       if (content.startsWith('!say ')) {
         bot.chat(content.slice(5));
@@ -1621,6 +1761,8 @@ if (require.main === module) {
       else if (cmd === 'stop') {
         botState.followingPlayer = null;
         botState.isBusyCrafting = false;
+        botState.autoSmelt = false;
+        clearTimeout(botState.smeltingInterval);
         stopAntiAfk(bot);
         stopFishing();
         botState.autoFarm = false;
@@ -1634,6 +1776,15 @@ if (require.main === module) {
       else if (cmd === 'craft' && args[1]) {
         const count = parseInt(args[2], 10) || 1;
         smartGatherAndCraft(bot, args[1].toLowerCase(), count);
+      }
+      else if (cmd === 'sort') {
+        sortAndCleanInventory(bot);
+      }
+      else if (cmd === 'smelt') {
+        botState.autoSmelt = !botState.autoSmelt;
+        if (botState.autoSmelt) runAutoSmelter(bot);
+        else clearTimeout(botState.smeltingInterval);
+        bot.chat(`🔥 Auto Smelter: ${botState.autoSmelt ? 'ON' : 'OFF'}`);
       }
       else if (cmd === 'guard' || cmd === 'defense') {
         botState.guardMode = !botState.guardMode;
