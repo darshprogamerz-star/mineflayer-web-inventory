@@ -1,16 +1,16 @@
 /**
  * ============================================================================
  * TITAN AUTONOMOUS COMPANION & OPERATIONS CONSOLE
- * VERSION: 27.0.0 (EXACT X,Y,Z COORDINATES IN RADAR HUD)
+ * VERSION: 28.0.0 (X-RAY FILTER TOGGLE & BOT LIVE POSITION HUD)
  * ============================================================================
  * Included Systems:
+ * - X-Ray Filter Toggle Button (Switch between Mobs-Only vs All Ores & Chests)
+ * - Bot Real-Time Exact Coordinates (X, Y, Z) HUD Badge
+ * - 2D Compass Radar with N, S, E, W Directions and Entity Positions
  * - Exact Ore Classifier (Iron, Gold, Diamond, Debris, Copper, Coal, Lapis)
- * - 2D Compass Radar with N, S, E, W Directions and Dynamic Meters
- * - Full Exact Coordinates (X, Y, Z) tracking in Radar List
- * - Full Container Scanner (Chests, Trapped Chests, Barrels)
- * - Complete Interactive Web Dashboard with Fixed Square Inventory Grid
- * - Manual Combat Buttons (Attack, Mine, Place) & Responsive D-Pad Controls
- * - Autonomous Routines: Guard Mode, Auto-Farm, Auto-Fish, 4x4 House Builder
+ * - Fixed Square Inventory Hotbar & Main Grid (Equip & Drop)
+ * - Manual Combat Buttons (Attack, Mine, Place) & Responsive D-Pad
+ * - Full Autonomous Routines: Guard, Farm, Fish, Build, Mine, Chest Deposit
  * - Workbench Crafting Engine with Crafting Table Interaction
  * - Dual-Way Discord Synchronizer (!ai, !status, !say)
  * - Gemini 2.5 Flash Native AI Engine with Fallback Support
@@ -526,7 +526,7 @@ async function dumpToChest(bot) {
 
 /**
  * ============================================================================
- * WEB OPERATIONS CONSOLE (WITH EXACT X,Y,Z COORDINATES IN RADAR HUD)
+ * WEB OPERATIONS CONSOLE (WITH X-RAY TOGGLE & EXACT BOT COORDINATES)
  * ============================================================================
  */
 function webInventoryPlugin(bot, customOptions = {}) {
@@ -544,7 +544,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-        <title>Titan Master Console V27</title>
+        <title>Titan Master Console V28</title>
         <script src="/socket.io/socket.io.js"></script>
         <style>
           * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
@@ -580,8 +580,16 @@ function webInventoryPlugin(bot, customOptions = {}) {
           .btn-drop { background: #e11d48; } 
           .btn-stop { background: #991b1b; grid-column: span 2; padding: 12px; font-size: 13px; }
           
+          /* Bot Location Tracker Badge */
+          .bot-pos-bar { width: 100%; background: #030712; border: 1px solid #1e293b; padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; color: #38bdf8; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+
+          /* Radar Card */
           .radar-card { display: flex; flex-direction: column; align-items: center; background: #030712; border-radius: 10px; border: 1px solid #1f2937; padding: 10px; margin-bottom: 12px; }
           #radarCanvas { background: #050811; border-radius: 8px; border: 1px solid #374151; width: 280px; height: 280px; display: block; }
+          
+          /* X-Ray Filter Button */
+          .radar-filter-btn { width: 100%; margin-top: 8px; padding: 8px; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #38bdf8; font-size: 11px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+          .radar-filter-btn:active { transform: scale(0.98); }
           
           .radar-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; font-size: 10px; margin-top: 8px; color: #9ca3af; }
           .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 3px; vertical-align: middle; }
@@ -644,18 +652,31 @@ function webInventoryPlugin(bot, customOptions = {}) {
             <button class="act-btn btn-stop" onclick="send('stop')">🛑 Stop All</button>
           </div>
 
+          <!-- Exact Bot Live Position Badge -->
+          <div class="bot-pos-bar">
+            <span>📍 My Position:</span>
+            <span id="botCoords">X: 0 | Y: 0 | Z: 0</span>
+          </div>
+
           <div class="radar-card">
             <canvas id="radarCanvas" width="280" height="280"></canvas>
+            
+            <!-- X-Ray Filter Toggle Button -->
+            <button class="radar-filter-btn" id="xrayToggleBtn" onclick="toggleXray()">🔍 Ores & Chests: ON</button>
+            
             <div class="radar-legend">
               <div><span class="dot" style="background:#22c55e;"></span>Bot</div>
               <div><span class="dot" style="background:#38bdf8;"></span>Player</div>
               <div><span class="dot" style="background:#ef4444;"></span>Mob</div>
-              <div><span class="dot" style="background:#eab308;"></span>Chest</div>
-              <div><span class="dot" style="background:#06b6d4;"></span>Diamond</div>
-              <div><span class="dot" style="background:#f97316;"></span>Iron</div>
-              <div><span class="dot" style="background:#fbbf24;"></span>Gold</div>
-              <div><span class="dot" style="background:#8b5cf6;"></span>Debris</div>
+              <span id="legendOres">
+                <div><span class="dot" style="background:#eab308;"></span>Chest</div>
+                <div><span class="dot" style="background:#06b6d4;"></span>Diamond</div>
+                <div><span class="dot" style="background:#f97316;"></span>Iron</div>
+                <div><span class="dot" style="background:#fbbf24;"></span>Gold</div>
+                <div><span class="dot" style="background:#8b5cf6;"></span>Debris</div>
+              </span>
             </div>
+            
             <div class="radar-list" id="radarList">
               <div style="color:#64748b; text-align:center;">Scanning area surroundings...</div>
             </div>
@@ -679,6 +700,8 @@ function webInventoryPlugin(bot, customOptions = {}) {
           const ctx = canvas.getContext('2d');
           const cX = 140, cY = 140, scale = 5.5;
 
+          let showOresAndChests = true; // Toggle State for X-Ray
+
           const main = document.getElementById('mainGrid');
           const hotbar = document.getElementById('hotbarGrid');
 
@@ -690,6 +713,21 @@ function webInventoryPlugin(bot, customOptions = {}) {
           function startMove(dir) { socket.emit('control_move', { direction: dir, state: true }); }
           function stopMove(dir) { socket.emit('control_move', { direction: dir, state: false }); }
           function jump() { socket.emit('control_jump'); }
+
+          function toggleXray() {
+            showOresAndChests = !showOresAndChests;
+            const btn = document.getElementById('xrayToggleBtn');
+            const legendOres = document.getElementById('legendOres');
+            if (showOresAndChests) {
+              btn.innerText = '🔍 Ores & Chests: ON';
+              btn.style.color = '#38bdf8';
+              legendOres.style.display = 'inline';
+            } else {
+              btn.innerText = '🚫 Ores & Chests: OFF (Only Players & Mobs)';
+              btn.style.color = '#94a3b8';
+              legendOres.style.display = 'none';
+            }
+          }
 
           function sendChat() {
             const input = document.getElementById('chatMsg');
@@ -705,7 +743,12 @@ function webInventoryPlugin(bot, customOptions = {}) {
           socket.on('radar', data => {
             ctx.clearRect(0, 0, 280, 280);
 
-            // Background concentric rings
+            // Update Bot Coordinates in Badge
+            if (data.bot) {
+              document.getElementById('botCoords').innerText = 'X: ' + Math.round(data.bot.x) + ' | Y: ' + Math.round(data.bot.y) + ' | Z: ' + Math.round(data.bot.z);
+            }
+
+            // Concentric Rings
             ctx.strokeStyle = '#1e293b';
             ctx.lineWidth = 1;
             [35, 70, 105].forEach(r => {
@@ -731,6 +774,12 @@ function webInventoryPlugin(bot, customOptions = {}) {
             let listHTML = '';
 
             data.entities.forEach(e => {
+              // FILTER CHECK: If X-Ray is OFF, skip chests and ores
+              const isOreOrChest = (e.type !== 'player' && e.type !== 'mob');
+              if (!showOresAndChests && isOreOrChest) {
+                return;
+              }
+
               const dx = e.x - data.bot.x;
               const dz = e.z - data.bot.z;
               const pX = cX + dx * scale;
@@ -992,7 +1041,6 @@ function webInventoryPlugin(bot, customOptions = {}) {
       const addedChests = [];
 
       foundChests.forEach(pos => {
-        // Prevent double chest duplicates in HUD
         const isCloseToExisting = addedChests.some(cPos => cPos.distanceTo(pos) < 2);
         if (!isCloseToExisting) {
           addedChests.push(pos);
@@ -1018,7 +1066,6 @@ function webInventoryPlugin(bot, customOptions = {}) {
           const trackedVeins = [];
 
           blocks.forEach(pos => {
-            // Cluster ores within 2.5 blocks to avoid duplicate spam
             const isNearVein = trackedVeins.some(vPos => vPos.distanceTo(pos) < 2.5);
             if (!isNearVein) {
               trackedVeins.push(pos);
