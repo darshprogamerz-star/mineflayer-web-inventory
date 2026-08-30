@@ -1,6 +1,6 @@
 /**
- * Ultimate Titan Agent - Fully Expanded, No Compression (V18.0.0)
- * All Features: AI, Farm, Fish, Build, Guard, AFK, Web D-Pad, Interactive Inventory, Attack/Mine/Place
+ * Ultimate Titan Agent - Fully Expanded, No Compression (V18.1.0)
+ * All Features: Gemini 2.5 Flash AI, Farm, Fish, Build, Guard, Web D-Pad, Interactive Inventory, Attack/Mine/Place
  */
 
 const http = require('http');
@@ -42,15 +42,15 @@ const BLOCK_ALIASES = {
 };
 
 /**
- * Gemini AI Brain
+ * Gemini AI Brain (Updated with Gemini 2.5 Flash)
  */
 async function askAiBrain(promptText, botStatus) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return "Boss, API Key set nahi hai!";
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
-    const userPrompt = `You are 'Nokar', an intelligent, casual Minecraft companion. Respond in Hinglish under 20 words. Bot Status -> HP: ${botStatus.hp}/20. Message: "${promptText}"`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    const userPrompt = `You are 'Nokar', an intelligent, casual Minecraft companion. Respond in short Hinglish under 20 words. Bot Status -> HP: ${botStatus.hp}/20. Message: "${promptText}"`;
 
     const response = await fetch(url, {
       method: 'POST',
@@ -287,7 +287,7 @@ async function executeHouseBuild(bot) {
     for (let x = 0; x < 4; x++) {
       for (let z = 0; z < 4; z++) {
         if (x === 0 || x === 3 || z === 0 || z === 3) {
-          if (x === 1 && z === 0 && (y === 0 || y === 1)) continue; // Door hole
+          if (x === 1 && z === 0 && (y === 0 || y === 1)) continue;
           placeList.push(start.offset(x, y, z));
         }
       }
@@ -296,7 +296,7 @@ async function executeHouseBuild(bot) {
 
   for (let x = 0; x < 4; x++) {
     for (let z = 0; z < 4; z++) {
-      placeList.push(start.offset(x, 3, z)); // Roof
+      placeList.push(start.offset(x, 3, z));
     }
   }
 
@@ -771,7 +771,7 @@ if (require.main === module) {
       port: PORT_ENDPOINT,
       username: BOT_IDENTITY,
       checkTimeoutInterval: 120000,
-      version: false // Keep false for 1.26.2 compatibility
+      version: false // Works perfectly for 1.26.2
     });
 
     bot.loadPlugin(pathfinder); 
@@ -910,7 +910,6 @@ if (require.main === module) {
         bot.chat("Sari inventory drop kar di!"); 
       }
       else {
-        // AI Chat Trigger
         if (message.toLowerCase().includes('nokar') || message.toLowerCase().includes('bot')) {
           const reply = await askAiBrain(message, { hp: bot.health });
           bot.chat(reply);
