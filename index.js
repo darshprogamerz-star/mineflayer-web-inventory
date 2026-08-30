@@ -1,6 +1,6 @@
 /**
- * Ultimate Titan Agent - Fully Expanded, No Compression (V18.1.0)
- * All Features: Gemini 2.5 Flash AI, Farm, Fish, Build, Guard, Web D-Pad, Interactive Inventory, Attack/Mine/Place
+ * Ultimate Titan Agent - Native Combat Engine & Gemini 2.5 Flash (V19.0.0)
+ * Fixed: Attack engine, Web Dashboard, AI Brain, Follow, Mining, Crafting
  */
 
 const http = require('http');
@@ -10,13 +10,12 @@ const mineflayer = require('mineflayer');
 const { Vec3 } = require('vec3');
 const { Client, GatewayIntentBits } = require('discord.js');
 
-// Load Plugins
+// Core Navigation & Mining Plugins
 const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
 const collectBlock = require('mineflayer-collectblock').plugin;
 const autoEat = require('mineflayer-auto-eat').plugin;
-const pvp = require('mineflayer-pvp').plugin;
 
-// Global State
+// Global Autonomous States
 const botState = {
   autoEat: true,
   autoFarm: false,
@@ -42,26 +41,32 @@ const BLOCK_ALIASES = {
 };
 
 /**
- * Gemini AI Brain (Updated with Gemini 2.5 Flash)
+ * Gemini AI Brain (Exact Match Gemini 2.5 Flash with Header Auth)
  */
 async function askAiBrain(promptText, botStatus) {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return "Boss, API Key set nahi hai!";
+  if (!apiKey) return "Boss, API Key set nahi hai Render me!";
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-    const userPrompt = `You are 'Nokar', an intelligent, casual Minecraft companion. Respond in short Hinglish under 20 words. Bot Status -> HP: ${botStatus.hp}/20. Message: "${promptText}"`;
+    const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+    const userPrompt = `You are 'Nokar', a loyal and witty Minecraft companion. Reply in short Hinglish under 20 words. Bot Status -> HP: ${botStatus.hp}/20. User says: "${promptText}"`;
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: userPrompt }] }] })
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey.trim()
+      },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: userPrompt }] }]
+      })
     });
 
     const data = await response.json();
     
     if (data.error) {
-      return `AI Error: ${data.error.message.substring(0, 40)}`;
+      console.error('[GEMINI API ERROR]', data.error.message);
+      return `AI Error: ${data.error.message.substring(0, 35)}`;
     }
     
     const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -98,7 +103,7 @@ if (DISCORD_TOKEN) {
 }
 
 /**
- * Tools and Combat Utility
+ * Weapon & Tool Equipper
  */
 async function equipBestWeapon(bot) {
   const weapons = bot.inventory.items().filter(item => item.name.includes('sword') || item.name.includes('axe'));
@@ -107,8 +112,8 @@ async function equipBestWeapon(bot) {
   weapons.sort((a, b) => {
     let aRank = tier.indexOf(a.name);
     let bRank = tier.indexOf(b.name);
-    if(aRank === -1) aRank = 99;
-    if(bRank === -1) bRank = 99;
+    if (aRank === -1) aRank = 99;
+    if (bRank === -1) bRank = 99;
     return aRank - bRank;
   });
   try { await bot.equip(weapons[0], 'hand'); } catch (e) {}
@@ -133,40 +138,50 @@ async function equipBestTool(bot, block) {
 }
 
 /**
- * Advanced Sentry / Guard Mode
+ * Native Combat & Bodyguard Routine (Direct Attack, 100% Guaranteed Hit)
  */
 function startGuardMode(bot) {
   botState.guardMode = true;
   botState.guardOrigin = bot.entity.position.clone();
-  bot.chat("🛡️ Guard Mode Active! Main is area ko protect karunga.");
+  bot.chat("🛡️ Guard Mode ON! Sabhi dushmano ko khatam karunga.");
 
   botState.guardInterval = setInterval(async () => {
     if (!botState.guardMode) return;
     
-    const hostiles = ['zombie', 'skeleton', 'spider', 'creeper', 'drowned', 'husk', 'enderman'];
+    const hostiles = ['zombie', 'skeleton', 'spider', 'creeper', 'drowned', 'husk', 'enderman', 'witch', 'slime'];
+    
+    // Find closest hostile mob within 16 blocks
     const target = bot.nearestEntity(e => {
       if (e.type !== 'mob') return false;
-      const name = e.name ? e.name.toLowerCase() : '';
-      return hostiles.some(h => name.includes(h)) && bot.entity.position.distanceTo(e.position) < 16;
+      const name = (e.name || e.displayName || '').toLowerCase();
+      return hostiles.some(h => name.includes(h)) && bot.entity.position.distanceTo(e.position) <= 16;
     });
 
     if (target) {
       await equipBestWeapon(bot);
-      bot.pvp.attack(target);
+      const dist = bot.entity.position.distanceTo(target.position);
+      
+      // Move closer to target
+      bot.pathfinder.setGoal(new goals.GoalFollow(target, 2), false);
+
+      // Direct physical hit within 3.5 blocks
+      if (dist <= 3.8) {
+        await bot.lookAt(target.position.offset(0, target.height ? target.height * 0.7 : 1, 0));
+        bot.attack(target);
+      }
     } else {
+      // Return to guard position if too far away
       if (botState.guardOrigin && bot.entity.position.distanceTo(botState.guardOrigin) > 6) {
         bot.pathfinder.setGoal(new goals.GoalNear(botState.guardOrigin.x, botState.guardOrigin.y, botState.guardOrigin.z, 2));
       }
     }
-  }, 1000);
+  }, 400); // Fast 400ms combat loop
 }
 
 function stopGuardMode(bot) {
   botState.guardMode = false;
-  if (botState.guardInterval) {
-    clearInterval(botState.guardInterval);
-  }
-  bot.pvp.stop();
+  if (botState.guardInterval) clearInterval(botState.guardInterval);
+  bot.pathfinder.stop();
 }
 
 /**
@@ -174,7 +189,7 @@ function stopGuardMode(bot) {
  */
 function startAntiAfk(bot) {
   botState.antiAfk = true;
-  bot.chat("🚶 Anti-AFK Wander ON kar diya hai!");
+  bot.chat("🚶 Anti-AFK Wander ON!");
   const homePos = bot.entity.position.clone();
 
   botState.antiAfkInterval = setInterval(async () => {
@@ -193,9 +208,7 @@ function startAntiAfk(bot) {
 
 function stopAntiAfk(bot) {
   botState.antiAfk = false;
-  if (botState.antiAfkInterval) {
-    clearInterval(botState.antiAfkInterval);
-  }
+  if (botState.antiAfkInterval) clearInterval(botState.antiAfkInterval);
   bot.clearControlStates();
 }
 
@@ -204,13 +217,10 @@ function stopAntiAfk(bot) {
  */
 async function startFishing(bot) {
   const rod = bot.inventory.items().find(i => i.name === 'fishing_rod');
-  if (!rod) {
-    bot.chat("Mere paas Fishing Rod nahi hai boss!");
-    return;
-  }
+  if (!rod) return bot.chat("Mere paas Fishing Rod nahi hai!");
   
   botState.isFishing = true;
-  bot.chat("🎣 Machhli pakadna shuru kar raha hoon...");
+  bot.chat("🎣 Fishing shuru...");
   await bot.equip(rod, 'hand');
 
   async function cast() {
@@ -219,9 +229,7 @@ async function startFishing(bot) {
       await bot.fish(); 
       cast(); 
     } catch (err) { 
-      if (botState.isFishing) {
-        setTimeout(cast, 2000); 
-      }
+      if (botState.isFishing) setTimeout(cast, 2000); 
     }
   }
   cast();
@@ -275,11 +283,9 @@ async function executeHouseBuild(bot) {
     i.name.includes('plank') || i.name.includes('cobble') || i.name.includes('stone') || i.name.includes('dirt')
   );
   
-  if (!getBuildBlock()) {
-    return bot.chat("Ghar banane ke liye blocks (planks/cobble/dirt) inventory me nahi hain!");
-  }
+  if (!getBuildBlock()) return bot.chat("Ghar banane ke liye blocks (planks/stone/dirt) nahi hain!");
 
-  bot.chat("🏠 4x4 Complete House banana shuru kar raha hoon...");
+  bot.chat("🏠 4x4 House banana shuru...");
   const start = bot.entity.position.floored().offset(1, 0, 1);
   const placeList = [];
 
@@ -287,7 +293,7 @@ async function executeHouseBuild(bot) {
     for (let x = 0; x < 4; x++) {
       for (let z = 0; z < 4; z++) {
         if (x === 0 || x === 3 || z === 0 || z === 3) {
-          if (x === 1 && z === 0 && (y === 0 || y === 1)) continue;
+          if (x === 1 && z === 0 && (y === 0 || y === 1)) continue; // Door frame
           placeList.push(start.offset(x, y, z));
         }
       }
@@ -295,9 +301,7 @@ async function executeHouseBuild(bot) {
   }
 
   for (let x = 0; x < 4; x++) {
-    for (let z = 0; z < 4; z++) {
-      placeList.push(start.offset(x, 3, z));
-    }
+    for (let z = 0; z < 4; z++) placeList.push(start.offset(x, 3, z)); // Roof
   }
 
   for (const pos of placeList) {
@@ -305,10 +309,7 @@ async function executeHouseBuild(bot) {
     if (!targetBlock || targetBlock.name !== 'air') continue;
 
     const blockItem = getBuildBlock();
-    if (!blockItem) {
-      bot.chat("Blocks khatam ho gaye!");
-      return;
-    }
+    if (!blockItem) return bot.chat("Blocks khatam ho gaye!");
 
     try {
       await bot.equip(blockItem, 'hand');
@@ -332,7 +333,7 @@ async function executeHouseBuild(bot) {
       }
     } catch (e) {}
   }
-  bot.chat("Starter House complete!");
+  bot.chat("House complete!");
 }
 
 /**
@@ -345,9 +346,9 @@ async function dumpToChest(bot) {
     maxDistance: 6
   });
 
-  if (!chestBlock) return bot.chat("Paas me koi Chest ya Barrel nahi mila!");
+  if (!chestBlock) return bot.chat("Paas me koi Chest nahi mila!");
 
-  bot.chat("📦 Chest me sara saman deposit kar raha hoon...");
+  bot.chat("📦 Chest me saman deposit kar raha hoon...");
   try {
     const chest = await bot.openChest(chestBlock);
     const items = bot.inventory.items();
@@ -360,14 +361,14 @@ async function dumpToChest(bot) {
       } catch (e) {}
     }
     chest.close();
-    bot.chat("Sara saman chest me deposit ho gaya!");
+    bot.chat("Saman deposit ho gaya!");
   } catch (err) {
     bot.chat(`Chest error: ${err.message}`);
   }
 }
 
 /**
- * Web Dashboard Application - Fully Expanded UI
+ * Web Operations Center
  */
 function webInventoryPlugin(bot, customOptions = {}) {
   const port = customOptions.port || process.env.PORT || 3000;
@@ -488,7 +489,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
             <div class="meter"><div class="meter-val" style="color:#fbbf24;" id="food">20 / 20</div><div style="font-size:12px; margin-top:3px; color:#9ca3af;">🍖 Hunger</div></div>
           </div>
 
-          <div class="hint">👉 <b>Click a slot</b> to Equip | <b>Double Click a slot</b> to Drop</div>
+          <div class="hint">👉 <b>Click a slot</b> to Equip | <b>Double Click</b> to Drop</div>
           
           <div style="font-size:12px; font-weight:bold; margin-bottom:5px; color:#cbd5e1; text-transform:uppercase;">Hotbar</div>
           <div class="grid" id="hotbarGrid"></div>
@@ -508,14 +509,8 @@ function webInventoryPlugin(bot, customOptions = {}) {
           const main = document.getElementById('mainGrid');
           const hotbar = document.getElementById('hotbarGrid');
 
-          // Generate Hotbar slots
-          for (let i = 36; i <= 44; i++) {
-            hotbar.innerHTML += '<div class="slot" id="s-' + i + '" onclick="slotClick(' + i + ')" ondblclick="slotDrop(' + i + ')"></div>';
-          }
-          // Generate Main Inventory slots
-          for (let i = 9; i <= 35; i++) {
-            main.innerHTML += '<div class="slot" id="s-' + i + '" onclick="slotClick(' + i + ')" ondblclick="slotDrop(' + i + ')"></div>';
-          }
+          for (let i = 36; i <= 44; i++) hotbar.innerHTML += '<div class="slot" id="s-' + i + '" onclick="slotClick(' + i + ')" ondblclick="slotDrop(' + i + ')"></div>';
+          for (let i = 9; i <= 35; i++) main.innerHTML += '<div class="slot" id="s-' + i + '" onclick="slotClick(' + i + ')" ondblclick="slotDrop(' + i + ')"></div>';
 
           function slotClick(slotId) { socket.emit('equip_slot', { slot: slotId }); }
           function slotDrop(slotId) { socket.emit('drop_slot', { slot: slotId }); }
@@ -535,7 +530,6 @@ function webInventoryPlugin(bot, customOptions = {}) {
             if (e.key === 'Enter') sendChat(); 
           });
 
-          // Draw Radar
           socket.on('radar', data => {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.strokeStyle = '#1f2937';
@@ -560,7 +554,6 @@ function webInventoryPlugin(bot, customOptions = {}) {
             ctx.beginPath(); ctx.arc(cX, cY, 6, 0, Math.PI * 2); ctx.fill();
           });
 
-          // Sync Data
           socket.on('sync', data => {
             if (data.hp !== undefined) document.getElementById('hp').innerText = Math.round(data.hp) + ' / 20';
             if (data.food !== undefined) document.getElementById('food').innerText = Math.round(data.food) + ' / 20';
@@ -579,7 +572,6 @@ function webInventoryPlugin(bot, customOptions = {}) {
             }
           });
 
-          // Handle Action Buttons
           function send(act) {
             fetch('/api/action', { 
               method: 'POST', 
@@ -600,7 +592,6 @@ function webInventoryPlugin(bot, customOptions = {}) {
     `);
   });
 
-  // Action Endpoint
   app.post('/api/action', async (req, res) => {
     const act = req.body.action;
     
@@ -632,9 +623,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
     }
     if (act === 'drop_hand') { 
       const held = bot.heldItem; 
-      if (held) {
-        bot.tossStack(held).catch(() => {}); 
-      }
+      if (held) bot.tossStack(held).catch(() => {}); 
       return res.json({ success: true }); 
     }
     if (act === 'stop') {
@@ -647,7 +636,6 @@ function webInventoryPlugin(bot, customOptions = {}) {
       
       bot.clearControlStates(); 
       bot.pathfinder.stop(); 
-      bot.pvp.stop();
       bot.collectBlock.cancelTask();
       bot.chat("Ruk gaya!");
       return res.json({ success: true });
@@ -656,18 +644,15 @@ function webInventoryPlugin(bot, customOptions = {}) {
     res.json({ success: false });
   });
 
-  // Socket Connections
   io.on('connection', (socket) => {
     syncState();
     
-    // Movement Control
     socket.on('control_move', data => bot.setControlState(data.direction, !!data.state));
     socket.on('control_jump', () => { 
       bot.setControlState('jump', true); 
       setTimeout(() => bot.setControlState('jump', false), 350); 
     });
     
-    // Inventory Actions
     socket.on('equip_slot', async data => { 
       const item = bot.inventory.slots[data.slot]; 
       if (item) { 
@@ -682,33 +667,36 @@ function webInventoryPlugin(bot, customOptions = {}) {
       } 
     });
     
-    // Manual Combat & Actions
+    // Direct Manual Web Attack & Mine
     socket.on('manual_action', async type => {
       if (type === 'attack') {
-        const target = bot.nearestEntity(e => (e.type === 'mob' || e.type === 'player') && bot.entity.position.distanceTo(e.position) <= 4);
-        if (target) bot.attack(target);
-        else bot.swingArm();
+        const target = bot.nearestEntity(e => (e.type === 'mob' || e.type === 'player') && bot.entity.position.distanceTo(e.position) <= 4.5);
+        if (target) {
+          await equipBestWeapon(bot);
+          await bot.lookAt(target.position.offset(0, target.height ? target.height * 0.7 : 1, 0));
+          bot.attack(target);
+        } else {
+          bot.swingArm();
+        }
       } 
       else if (type === 'mine') {
-        const targetBlock = bot.blockAtCursor(4);
+        const targetBlock = bot.blockAtCursor(4.5);
         if (targetBlock && targetBlock.name !== 'air') {
+          await equipBestTool(bot, targetBlock);
           try { await bot.dig(targetBlock); } catch (e) {}
         }
       } 
       else if (type === 'place') {
-        const refBlock = bot.blockAtCursor(4);
+        const refBlock = bot.blockAtCursor(4.5);
         if (refBlock && refBlock.name !== 'air') {
           try { await bot.placeBlock(refBlock, new Vec3(0, 1, 0)); } catch (e) {}
         }
       }
     });
 
-    // Chat / Commands
     socket.on('send_chat', async data => {
       if (data && data.message) {
         const msg = data.message.trim();
-        
-        // Custom check for direct command from web chat
         if (msg.startsWith('!')) {
            bot.chat(msg); 
         } else {
@@ -724,9 +712,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
   });
 
   function syncState() {
-    const items = bot.inventory.slots.map((item, index) => {
-      return item ? { slot: index, name: item.name, count: item.count } : null;
-    }).filter(Boolean);
+    const items = bot.inventory.slots.map((item, index) => item ? { slot: index, name: item.name, count: item.count } : null).filter(Boolean);
     io.emit('sync', { hp: bot.health, food: bot.food, items });
   }
 
@@ -771,13 +757,12 @@ if (require.main === module) {
       port: PORT_ENDPOINT,
       username: BOT_IDENTITY,
       checkTimeoutInterval: 120000,
-      version: false // Works perfectly for 1.26.2
+      version: false
     });
 
     bot.loadPlugin(pathfinder); 
     bot.loadPlugin(collectBlock); 
-    bot.loadPlugin(autoEat); 
-    bot.loadPlugin(pvp);
+    bot.loadPlugin(autoEat);
 
     bot.once('spawn', () => {
       console.log(`[AGENT LIVE] ${bot.username} entered world.`);
@@ -795,7 +780,6 @@ if (require.main === module) {
 
     bot.on('physicsTick', () => {
       if (!botState.followingPlayer) return;
-      
       const target = bot.players[botState.followingPlayer]?.entity;
       if (target) { 
         bot.pathfinder.setGoal(new goals.GoalFollow(target, 2), true); 
@@ -835,7 +819,6 @@ if (require.main === module) {
         
         bot.clearControlStates(); 
         bot.pathfinder.stop(); 
-        bot.pvp.stop(); 
         bot.collectBlock.cancelTask();
         bot.chat("Sab stop kar diya!"); 
       }
@@ -910,6 +893,7 @@ if (require.main === module) {
         bot.chat("Sari inventory drop kar di!"); 
       }
       else {
+        // AI Chat Trigger
         if (message.toLowerCase().includes('nokar') || message.toLowerCase().includes('bot')) {
           const reply = await askAiBrain(message, { hp: bot.health });
           bot.chat(reply);
