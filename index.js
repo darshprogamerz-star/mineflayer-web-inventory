@@ -1,18 +1,18 @@
 /**
  * ============================================================================
  * TITAN AUTONOMOUS COMPANION & OPERATIONS CONSOLE
- * VERSION: 25.0.0 (MASTER FULL EDITION - EXACT ORE DETECTOR & EXPANDED UI)
+ * VERSION: 26.0.0 (CLEAN RADAR UI - NO OVERLAPPING TEXT - FULL LENGTH)
  * ============================================================================
- * Included Systems:
- * - Exact Ore Classifier (Iron, Gold, Diamond, Debris, Copper, Coal, Lapis)
- * - 2D Compass Radar with N, S, E, W Directions and Dynamic Meters
- * - Full Container Scanner (Chests, Trapped Chests, Barrels)
- * - Complete Interactive Web Dashboard with Fixed Square Inventory Grid
- * - Manual Combat Buttons (Attack, Mine, Place) & Responsive D-Pad Controls
- * - Autonomous Routines: Guard Mode, Auto-Farm, Auto-Fish, 4x4 House Builder
- * - Workbench Crafting Engine with Crafting Table Interaction
- * - Dual-Way Discord Synchronizer (!ai, !status, !say)
- * - Gemini 2.5 Flash Native AI Engine with Fallback Support
+ * Features:
+ * - Ultra-Clean High Visibility Dot-Only Canvas Radar
+ * - De-duplicated Nearby Tracker List (No spam for same ore vein)
+ * - Exact Ore Identification (Diamond, Debris, Gold, Iron, Copper, Lapis, Coal)
+ * - Full Interactive Web Dashboard with Fixed Square Inventory Grid
+ * - Manual Combat (Attack, Mine, Place) & Responsive D-Pad
+ * - Full Autonomous Routines: Guard, Farm, Fish, Build, Mine, Chest Deposit
+ * - Crafting Engine with Workbench recipes
+ * - Discord Real-time Bridge (!ai, !status, !say)
+ * - Gemini 2.5 Flash Native AI with Fallback Engine
  * ============================================================================
  */
 
@@ -443,7 +443,7 @@ async function executeHouseBuild(bot) {
 
   for (let x = 0; x < 4; x++) {
     for (let z = 0; z < 4; z++) {
-      layout.push(basePoint.offset(x, 3, z)); // Roof
+      layout.push(basePoint.offset(x, 3, z));
     }
   }
 
@@ -525,7 +525,7 @@ async function dumpToChest(bot) {
 
 /**
  * ============================================================================
- * WEB OPERATIONS CONSOLE (WITH EXACT ORE LABELS & ALIGNED SQUARE GRID)
+ * WEB OPERATIONS CONSOLE (CLEAN DOT-ONLY RADAR & CLUSTERED LIST)
  * ============================================================================
  */
 function webInventoryPlugin(bot, customOptions = {}) {
@@ -543,7 +543,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-        <title>Titan Master Console V25</title>
+        <title>Titan Master Console V26</title>
         <script src="/socket.io/socket.io.js"></script>
         <style>
           * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
@@ -585,14 +585,13 @@ function webInventoryPlugin(bot, customOptions = {}) {
           .radar-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; font-size: 10px; margin-top: 8px; color: #9ca3af; }
           .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 3px; vertical-align: middle; }
           
-          .radar-list { width: 100%; max-height: 120px; overflow-y: auto; background: #0b1120; border-radius: 6px; padding: 6px 8px; margin-top: 8px; font-size: 11px; border: 1px solid #1e293b; }
+          .radar-list { width: 100%; max-height: 140px; overflow-y: auto; background: #0b1120; border-radius: 6px; padding: 6px 8px; margin-top: 8px; font-size: 11px; border: 1px solid #1e293b; }
           .radar-item { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #1e293b; }
           
           .meters { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 12px; }
           .meter { background: #030712; padding: 8px; border-radius: 8px; text-align: center; border: 1px solid #1f2937; }
           .meter-val { font-size: 16px; font-weight: bold; }
           
-          /* Fixed Perfect Square Grid */
           .section-title { font-size: 11px; font-weight: bold; color: #94a3b8; margin: 8px 0 4px; text-transform: uppercase; letter-spacing: 0.5px; }
           .grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; background: #030712; padding: 6px; border-radius: 8px; border: 1px solid #1f2937; margin-bottom: 8px; }
           .slot { width: 100%; aspect-ratio: 1 / 1; background: #1e293b; border: 1px solid #334155; border-radius: 4px; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: pointer; }
@@ -651,11 +650,12 @@ function webInventoryPlugin(bot, customOptions = {}) {
               <div><span class="dot" style="background:#ef4444;"></span>Mob</div>
               <div><span class="dot" style="background:#eab308;"></span>Chest</div>
               <div><span class="dot" style="background:#06b6d4;"></span>Diamond</div>
-              <div><span class="dot" style="background:#f97316;"></span>Iron/Gold</div>
+              <div><span class="dot" style="background:#f97316;"></span>Iron</div>
+              <div><span class="dot" style="background:#fbbf24;"></span>Gold</div>
               <div><span class="dot" style="background:#8b5cf6;"></span>Debris</div>
             </div>
             <div class="radar-list" id="radarList">
-              <div style="color:#64748b; text-align:center;">Scanning area surroundings...</div>
+              <div style="color:#64748b; text-align:center;">Scanning surroundings...</div>
             </div>
           </div>
 
@@ -703,7 +703,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
           socket.on('radar', data => {
             ctx.clearRect(0, 0, 280, 280);
 
-            // Background concentric rings
+            // Concentric Radar Rings
             ctx.strokeStyle = '#1e293b';
             ctx.lineWidth = 1;
             [35, 70, 105].forEach(r => {
@@ -712,7 +712,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
               ctx.stroke();
             });
 
-            // Grid lines
+            // Clean Grid Crosshairs
             ctx.strokeStyle = '#0f172a';
             ctx.beginPath(); ctx.moveTo(cX, 0); ctx.lineTo(cX, 280); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(0, cY); ctx.lineTo(280, cY); ctx.stroke();
@@ -742,42 +742,53 @@ function webInventoryPlugin(bot, customOptions = {}) {
               else if (dx < -2) dir += 'West';
               if (!dir) dir = 'Near';
 
+              // Distinct Colors
               let color = '#38bdf8';
               if (e.type === 'mob') color = '#ef4444';
               else if (e.type === 'chest') color = '#eab308';
               else if (e.type === 'diamond') color = '#06b6d4';
               else if (e.type === 'debris') color = '#8b5cf6';
-              else if (e.type === 'gold') color = '#eab308';
+              else if (e.type === 'gold') color = '#fbbf24';
               else if (e.type === 'iron') color = '#f97316';
               else if (e.type === 'copper') color = '#ea580c';
               else if (e.type === 'lapis') color = '#2563eb';
               else if (e.type === 'coal') color = '#64748b';
 
+              // ONLY DRAW CLEAN GLOWING DOTS ON CANVAS (NO OVERLAPPING TEXT)
               if (pX >= 4 && pX <= 276 && pY >= 4 && pY <= 276) {
                 ctx.fillStyle = color;
                 ctx.beginPath();
-                ctx.arc(pX, pY, e.type === 'player' || e.type === 'mob' ? 4.5 : 3.5, 0, Math.PI * 2);
+                const radius = (e.type === 'player' || e.type === 'mob') ? 5 : 3.5;
+                ctx.arc(pX, pY, radius, 0, Math.PI * 2);
                 ctx.fill();
 
-                ctx.fillStyle = '#f8fafc';
-                ctx.font = '8px sans-serif';
-                ctx.textAlign = 'left';
-                ctx.fillText(e.name + ' [' + dist + 'm]', pX + 5, pY + 3);
+                // Subtle glow ring for high value targets
+                if (e.type === 'diamond' || e.type === 'debris' || e.type === 'player') {
+                  ctx.strokeStyle = color;
+                  ctx.lineWidth = 1;
+                  ctx.beginPath();
+                  ctx.arc(pX, pY, radius + 2, 0, Math.PI * 2);
+                  ctx.stroke();
+                }
               }
 
+              // All text details cleanly rendered in scrollable HUD list below
               listHTML += '<div class="radar-item">' +
-                '<span style="color:' + color + '">● ' + e.name + '</span>' +
-                '<span style="color:#94a3b8">' + dist + 'm ' + dir + (e.y !== undefined ? ' (Y:' + Math.round(e.y) + ')' : '') + '</span>' +
+                '<span style="color:' + color + '; font-weight:600;">● ' + e.name + '</span>' +
+                '<span style="color:#94a3b8;">' + dist + 'm ' + dir + (e.y !== undefined ? ' (Y:' + Math.round(e.y) + ')' : '') + '</span>' +
                 '</div>';
             });
 
-            document.getElementById('radarList').innerHTML = listHTML || '<div style="color:#64748b; text-align:center;">No items or mobs nearby</div>';
+            document.getElementById('radarList').innerHTML = listHTML || '<div style="color:#64748b; text-align:center;">No targets nearby</div>';
 
-            // Draw Bot Center
+            // Center Bot Marker
             ctx.fillStyle = '#22c55e';
             ctx.beginPath();
             ctx.arc(cX, cY, 5, 0, Math.PI * 2);
             ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
           });
 
           socket.on('sync', data => {
@@ -943,7 +954,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
     io.emit('sync', { hp: bot.health, food: bot.food, items });
   }
 
-  // Active Radar Tick (Exact Ore Name Classifier Engine)
+  // Active Radar Tick (De-duplicated Ore & Entity Classifier)
   setInterval(() => {
     if (!bot.entity) return;
     const nearby = [];
@@ -966,7 +977,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
       }
     }
 
-    // 2. Scan Containers
+    // 2. Scan Containers (Grouped within 2 blocks)
     if (mcData) {
       const containerIds = [
         mcData.blocksByName.chest?.id,
@@ -974,12 +985,19 @@ function webInventoryPlugin(bot, customOptions = {}) {
         mcData.blocksByName.barrel?.id
       ].filter(Boolean);
 
-      const foundChests = bot.findBlocks({ matching: containerIds, maxDistance: 16, count: 6 });
+      const foundChests = bot.findBlocks({ matching: containerIds, maxDistance: 16, count: 8 });
+      const addedChests = [];
+
       foundChests.forEach(pos => {
-        nearby.push({ name: 'Chest', type: 'chest', x: pos.x, y: pos.y, z: pos.z });
+        // Prevent double chest duplicates in HUD
+        const isCloseToExisting = addedChests.some(cPos => cPos.distanceTo(pos) < 2);
+        if (!isCloseToExisting) {
+          addedChests.push(pos);
+          nearby.push({ name: 'Chest', type: 'chest', x: pos.x, y: pos.y, z: pos.z });
+        }
       });
 
-      // 3. Scan Ores with Exact Names & Colors
+      // 3. Scan Specific Ores with Clustering Logic
       const oreList = [
         { key: 'diamond', name: 'Diamond Ore', ids: [mcData.blocksByName.diamond_ore?.id, mcData.blocksByName.deepslate_diamond_ore?.id] },
         { key: 'debris', name: 'Ancient Debris', ids: [mcData.blocksByName.ancient_debris?.id] },
@@ -993,15 +1011,22 @@ function webInventoryPlugin(bot, customOptions = {}) {
       oreList.forEach(oreGroup => {
         const validIds = oreGroup.ids.filter(Boolean);
         if (validIds.length > 0) {
-          const blocks = bot.findBlocks({ matching: validIds, maxDistance: 16, count: 5 });
+          const blocks = bot.findBlocks({ matching: validIds, maxDistance: 16, count: 12 });
+          const trackedVeins = [];
+
           blocks.forEach(pos => {
-            nearby.push({
-              name: oreGroup.name,
-              type: oreGroup.key,
-              x: pos.x,
-              y: pos.y,
-              z: pos.z
-            });
+            // Cluster ores within 2.5 blocks to avoid duplicate spam
+            const isNearVein = trackedVeins.some(vPos => vPos.distanceTo(pos) < 2.5);
+            if (!isNearVein) {
+              trackedVeins.push(pos);
+              nearby.push({
+                name: oreGroup.name,
+                type: oreGroup.key,
+                x: pos.x,
+                y: pos.y,
+                z: pos.z
+              });
+            }
           });
         }
       });
