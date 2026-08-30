@@ -1,18 +1,19 @@
 /**
  * ============================================================================
  * TITAN AUTONOMOUS COMPANION & OPERATIONS CONSOLE
- * VERSION: 26.0.0 (CLEAN RADAR UI - NO OVERLAPPING TEXT - FULL LENGTH)
+ * VERSION: 27.0.0 (EXACT X,Y,Z COORDINATES IN RADAR HUD)
  * ============================================================================
- * Features:
- * - Ultra-Clean High Visibility Dot-Only Canvas Radar
- * - De-duplicated Nearby Tracker List (No spam for same ore vein)
- * - Exact Ore Identification (Diamond, Debris, Gold, Iron, Copper, Lapis, Coal)
- * - Full Interactive Web Dashboard with Fixed Square Inventory Grid
- * - Manual Combat (Attack, Mine, Place) & Responsive D-Pad
- * - Full Autonomous Routines: Guard, Farm, Fish, Build, Mine, Chest Deposit
- * - Crafting Engine with Workbench recipes
- * - Discord Real-time Bridge (!ai, !status, !say)
- * - Gemini 2.5 Flash Native AI with Fallback Engine
+ * Included Systems:
+ * - Exact Ore Classifier (Iron, Gold, Diamond, Debris, Copper, Coal, Lapis)
+ * - 2D Compass Radar with N, S, E, W Directions and Dynamic Meters
+ * - Full Exact Coordinates (X, Y, Z) tracking in Radar List
+ * - Full Container Scanner (Chests, Trapped Chests, Barrels)
+ * - Complete Interactive Web Dashboard with Fixed Square Inventory Grid
+ * - Manual Combat Buttons (Attack, Mine, Place) & Responsive D-Pad Controls
+ * - Autonomous Routines: Guard Mode, Auto-Farm, Auto-Fish, 4x4 House Builder
+ * - Workbench Crafting Engine with Crafting Table Interaction
+ * - Dual-Way Discord Synchronizer (!ai, !status, !say)
+ * - Gemini 2.5 Flash Native AI Engine with Fallback Support
  * ============================================================================
  */
 
@@ -443,7 +444,7 @@ async function executeHouseBuild(bot) {
 
   for (let x = 0; x < 4; x++) {
     for (let z = 0; z < 4; z++) {
-      layout.push(basePoint.offset(x, 3, z));
+      layout.push(basePoint.offset(x, 3, z)); // Roof
     }
   }
 
@@ -525,7 +526,7 @@ async function dumpToChest(bot) {
 
 /**
  * ============================================================================
- * WEB OPERATIONS CONSOLE (CLEAN DOT-ONLY RADAR & CLUSTERED LIST)
+ * WEB OPERATIONS CONSOLE (WITH EXACT X,Y,Z COORDINATES IN RADAR HUD)
  * ============================================================================
  */
 function webInventoryPlugin(bot, customOptions = {}) {
@@ -543,7 +544,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-        <title>Titan Master Console V26</title>
+        <title>Titan Master Console V27</title>
         <script src="/socket.io/socket.io.js"></script>
         <style>
           * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
@@ -585,13 +586,14 @@ function webInventoryPlugin(bot, customOptions = {}) {
           .radar-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; font-size: 10px; margin-top: 8px; color: #9ca3af; }
           .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 3px; vertical-align: middle; }
           
-          .radar-list { width: 100%; max-height: 140px; overflow-y: auto; background: #0b1120; border-radius: 6px; padding: 6px 8px; margin-top: 8px; font-size: 11px; border: 1px solid #1e293b; }
+          .radar-list { width: 100%; max-height: 120px; overflow-y: auto; background: #0b1120; border-radius: 6px; padding: 6px 8px; margin-top: 8px; font-size: 11px; border: 1px solid #1e293b; }
           .radar-item { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #1e293b; }
           
           .meters { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 12px; }
           .meter { background: #030712; padding: 8px; border-radius: 8px; text-align: center; border: 1px solid #1f2937; }
           .meter-val { font-size: 16px; font-weight: bold; }
           
+          /* Fixed Perfect Square Grid */
           .section-title { font-size: 11px; font-weight: bold; color: #94a3b8; margin: 8px 0 4px; text-transform: uppercase; letter-spacing: 0.5px; }
           .grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; background: #030712; padding: 6px; border-radius: 8px; border: 1px solid #1f2937; margin-bottom: 8px; }
           .slot { width: 100%; aspect-ratio: 1 / 1; background: #1e293b; border: 1px solid #334155; border-radius: 4px; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: pointer; }
@@ -655,7 +657,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
               <div><span class="dot" style="background:#8b5cf6;"></span>Debris</div>
             </div>
             <div class="radar-list" id="radarList">
-              <div style="color:#64748b; text-align:center;">Scanning surroundings...</div>
+              <div style="color:#64748b; text-align:center;">Scanning area surroundings...</div>
             </div>
           </div>
 
@@ -703,7 +705,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
           socket.on('radar', data => {
             ctx.clearRect(0, 0, 280, 280);
 
-            // Concentric Radar Rings
+            // Background concentric rings
             ctx.strokeStyle = '#1e293b';
             ctx.lineWidth = 1;
             [35, 70, 105].forEach(r => {
@@ -712,7 +714,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
               ctx.stroke();
             });
 
-            // Clean Grid Crosshairs
+            // Grid lines
             ctx.strokeStyle = '#0f172a';
             ctx.beginPath(); ctx.moveTo(cX, 0); ctx.lineTo(cX, 280); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(0, cY); ctx.lineTo(280, cY); ctx.stroke();
@@ -754,7 +756,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
               else if (e.type === 'lapis') color = '#2563eb';
               else if (e.type === 'coal') color = '#64748b';
 
-              // ONLY DRAW CLEAN GLOWING DOTS ON CANVAS (NO OVERLAPPING TEXT)
+              // DRAW CLEAN GLOWING DOTS ON CANVAS
               if (pX >= 4 && pX <= 276 && pY >= 4 && pY <= 276) {
                 ctx.fillStyle = color;
                 ctx.beginPath();
@@ -762,7 +764,6 @@ function webInventoryPlugin(bot, customOptions = {}) {
                 ctx.arc(pX, pY, radius, 0, Math.PI * 2);
                 ctx.fill();
 
-                // Subtle glow ring for high value targets
                 if (e.type === 'diamond' || e.type === 'debris' || e.type === 'player') {
                   ctx.strokeStyle = color;
                   ctx.lineWidth = 1;
@@ -772,10 +773,12 @@ function webInventoryPlugin(bot, customOptions = {}) {
                 }
               }
 
-              // All text details cleanly rendered in scrollable HUD list below
+              // Build list item with EXACT X, Y, Z coordinates
+              let exactCoords = '[X:' + Math.round(e.x) + ' Y:' + (e.y !== undefined ? Math.round(e.y) : '?') + ' Z:' + Math.round(e.z) + ']';
+              
               listHTML += '<div class="radar-item">' +
                 '<span style="color:' + color + '; font-weight:600;">● ' + e.name + '</span>' +
-                '<span style="color:#94a3b8;">' + dist + 'm ' + dir + (e.y !== undefined ? ' (Y:' + Math.round(e.y) + ')' : '') + '</span>' +
+                '<span style="color:#94a3b8;">' + dist + 'm ' + dir + ' ' + exactCoords + '</span>' +
                 '</div>';
             });
 
