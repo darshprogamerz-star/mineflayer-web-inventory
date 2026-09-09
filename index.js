@@ -1,64 +1,224 @@
 /**
  * ============================================================================
- * MINEFLAYER AUTONOMOUS SYSTEM - PART 1
- * CORE ENGINE, AI BRAIN, AUTOMATIONS & LOGISTICS
+ * TITAN AUTONOMOUS MINECRAFT COMPANION & OPERATIONS CONSOLE
+ * VERSION: 31.0.0 (ULTIMATE MASTER EDITION - AUTO SMELTER & INVENTORY SORTER)
+ * ============================================================================
+ * Included Systems:
+ * - Direct Raycast Combat & Auto Mob Defense Engine
+ * - Smart Multi-Step Gather & Crafting System (Wood to Tools)
+ * - Auto-Smelter Integration (Automatic Furnace Ore Smelting Routine)
+ * - Advanced Inventory Sorter & Garbage Filter (Auto-Deposit & Trash Clean)
+ * - 2D Dynamic Compass Radar (N, S, E, W + Live Distance Tracking)
+ * - X-Ray Filter Toggle (Show All vs Mobs/Players Only)
+ * - Bot Live Exact Position (X, Y, Z) HUD Badge
+ * - Container Scanner (Chests, Trapped Chests, Barrels, Furnaces)
+ * - Full Ore Classifier (Diamond, Ancient Debris, Gold, Iron, Copper, Lapis, Coal)
+ * - Complete Interactive Web Dashboard with Fixed Square Inventory Grid
+ * - Manual Combat Buttons (Attack, Mine, Place) & Responsive D-Pad Controls
+ * - Autonomous Routines: Guard Mode, Auto-Farm, Auto-Fish, 4x4 House Builder
+ * - Dual-Way Discord Synchronizer (!ai, !status, !say, !craft)
+ * - Universal Server Message Listener (Aternos / Geyser / Java Supported)
+ * - Gemini 2.5 Flash Native AI Engine with Direct Endpoint Authentication
  * ============================================================================
  */
 
-const mineflayer = require('mineflayer');
-const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
-const collectBlock = require('mineflayer-collectblock').plugin;
-const autoEat = require('mineflayer-auto-eat').plugin;
-const { Vec3 } = require('vec3');
 const http = require('http');
 const express = require('express');
 const socketIo = require('socket.io');
-const { Client, GatewayIntentBits, ActivityType } = require('discord.js');
+const mineflayer = require('mineflayer');
+const { Vec3 } = require('vec3');
+const { Client, GatewayIntentBits } = require('discord.js');
 
-// Environment Configurations
-const DISCORD_BOT_TOKEN = process.env.DISCORD_TOKEN || '';
-const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID || '';
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+// Core Mineflayer Navigation & Autonomous Plugins
+const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
+const collectBlock = require('mineflayer-collectblock').plugin;
+const autoEat = require('mineflayer-auto-eat').plugin;
 
-// Global State Registry
+/**
+ * ============================================================================
+ * GLOBAL STATE MACHINE
+ * ============================================================================
+ */
 const botState = {
-  followingPlayer: null,
-  guardMode: false,
-  antiAfk: false,
-  antiAfkInterval: null,
-  isFishing: false,
+  autoEat: true,
   autoFarm: false,
   farmingInterval: null,
-  autoSmelt: false,
-  smeltingInterval: null,
+  followingPlayer: null,
+  antiAfk: false,
+  antiAfkInterval: null,
+  guardMode: true,
+  guardInterval: null,
+  guardOrigin: null,
+  isFishing: false,
   isBusyCrafting: false,
-  netherMission: {
-    active: false,
-    stage: 'IDLE', // IDLE, PORTAL_BUILD, NETHER_MINING, SMELT_AND_UPGRADE
-    debrisGathered: 0,
-    targetDebris: 4,
-    homeCoords: null,
-    portalCoords: null
-  }
+  autoSmelt: false,
+  smeltingInterval: null
 };
 
-// Aliases for user-friendly mining & crafting commands
+/**
+ * ============================================================================
+ * HOSTILE MOBS REGISTRY
+ * ============================================================================
+ */
+const HOSTILE_MOBS = [
+  'zombie',
+  'skeleton',
+  'spider',
+  'creeper',
+  'drowned',
+  'husk',
+  'enderman',
+  'witch',
+  'slime',
+  'phantom',
+  'pillager',
+  'cave_spider',
+  'zombified_piglin',
+  'piglin_brute',
+  'stray',
+  'wither_skeleton'
+];
+
+/**
+ * ============================================================================
+ * MINING BLOCK ALIASES DATABASE
+ * ============================================================================
+ */
 const BLOCK_ALIASES = {
-  wood: ['oak_log', 'birch_log', 'spruce_log', 'jungle_log', 'acacia_log', 'dark_oak_log', 'mangrove_log'],
-  log: ['oak_log', 'birch_log', 'spruce_log', 'jungle_log', 'acacia_log', 'dark_oak_log', 'mangrove_log'],
-  stone: ['stone', 'cobblestone', 'deepslate', 'cobbled_deepslate'],
-  iron: ['iron_ore', 'deepslate_iron_ore'],
-  coal: ['coal_ore', 'deepslate_coal_ore'],
-  diamond: ['diamond_ore', 'deepslate_diamond_ore'],
-  gold: ['gold_ore', 'deepslate_gold_ore'],
-  debris: ['ancient_debris'],
-  ancient_debris: ['ancient_debris']
+  'diamond': [
+    'diamond_ore',
+    'deepslate_diamond_ore',
+    'diamond_block'
+  ],
+  'iron': [
+    'iron_ore',
+    'deepslate_iron_ore',
+    'raw_iron_block'
+  ],
+  'gold': [
+    'gold_ore',
+    'deepslate_gold_ore',
+    'nether_gold_ore',
+    'raw_gold_block'
+  ],
+  'coal': [
+    'coal_ore',
+    'deepslate_coal_ore',
+    'coal_block'
+  ],
+  'copper': [
+    'copper_ore',
+    'deepslate_copper_ore',
+    'raw_copper_block'
+  ],
+  'lapis': [
+    'lapis_ore',
+    'deepslate_lapis_ore',
+    'lapis_block'
+  ],
+  'redstone': [
+    'redstone_ore',
+    'deepslate_redstone_ore',
+    'redstone_block'
+  ],
+  'debris': [
+    'ancient_debris'
+  ],
+  'wood': [
+    'oak_log',
+    'birch_log',
+    'spruce_log',
+    'dark_oak_log',
+    'jungle_log',
+    'acacia_log',
+    'mangrove_log',
+    'cherry_log'
+  ],
+  'tree': [
+    'oak_log',
+    'birch_log',
+    'spruce_log',
+    'dark_oak_log'
+  ],
+  'stone': [
+    'stone',
+    'cobblestone',
+    'deepslate',
+    'cobbled_deepslate',
+    'andesite',
+    'diorite',
+    'granite'
+  ],
+  'dirt': [
+    'dirt',
+    'grass_block',
+    'coarse_dirt'
+  ],
+  'sand': [
+    'sand',
+    'red_sand'
+  ]
 };
 
-const HAZARD_BLOCKS = ['lava', 'flowing_lava', 'fire', 'magma_block', 'sulfur_cube'];
-const HOSTILE_MOBS = ['zombie', 'skeleton', 'spider', 'creeper', 'enderman', 'witch', 'drowned', 'husk', 'stray', 'hoglin', 'piglin_brute'];
+/**
+ * ============================================================================
+ * GEMINI 2.5 FLASH NATIVE AI ENGINE
+ * ============================================================================
+ */
+async function askAiBrain(promptText, botStatus) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    console.error('[AI CONFIG] GEMINI_API_KEY environment variable is not defined.');
+    return "Boss, Render me GEMINI_API_KEY set nahi hai!";
+  }
 
-// Discord Client Setup
+  const cleanKey = apiKey.trim();
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${cleanKey}`;
+
+  try {
+    const userPrompt = `You are 'Nokar', an intelligent, humorous, and loyal Minecraft companion. Reply strictly in short natural Hinglish under 20 words. Current Status -> Health: ${botStatus.hp}/20, Food: ${botStatus.food}/20. User says: "${promptText}"`;
+    
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              {
+                text: userPrompt
+              }
+            ]
+          }
+        ]
+      })
+    });
+
+    const data = await response.json();
+
+    if (data.error) {
+      console.error('[GEMINI API ERROR]', data.error.message);
+      return `Google Error: ${data.error.message.substring(0, 30)}`;
+    }
+
+    if (data.candidates && data.candidates[0]?.content?.parts?.[0]?.text) {
+      return data.candidates[0].content.parts[0].text.trim();
+    }
+
+    return "Haan boss, sun raha hoon bolo!";
+  } catch (err) {
+    console.error('[GEMINI NETWORK ERROR]', err.message);
+    return `Net Error: ${err.message.substring(0, 20)}`;
+  }
+}
+
+/**
+ * ============================================================================
+ * DISCORD REAL-TIME BRIDGE
+ * ============================================================================
+ */
 const discordClient = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -67,233 +227,442 @@ const discordClient = new Client({
   ]
 });
 
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN || '';
+const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID || '';
 let discordChannel = null;
 
-if (DISCORD_BOT_TOKEN) {
-  discordClient.on('clientReady', async () => {
+if (DISCORD_TOKEN) {
+  discordClient.login(DISCORD_TOKEN).catch(err => {
+    console.error('[DISCORD ERROR] Login Failed:', err.message);
+  });
+
+  discordClient.once('ready', async () => {
     console.log(`[DISCORD LIVE] Connected successfully as ${discordClient.user.tag}`);
-    discordClient.user.setActivity('SMP Defense Matrix', { type: ActivityType.Watching });
     if (DISCORD_CHANNEL_ID) {
       discordChannel = await discordClient.channels.fetch(DISCORD_CHANNEL_ID).catch(() => null);
-    }
-  });
-
-  discordClient.login(DISCORD_BOT_TOKEN).catch(err => {
-    console.error('[DISCORD ERROR] Login failure:', err.message);
-  });
-}
-
-function safeChat(bot, message) {
-  if (!bot || !bot.chat) return;
-  try {
-    bot.chat(String(message).slice(0, 256));
-  } catch (err) {
-    console.error('[CHAT ERROR]', err.message);
-  }
-}
-
-/**
- * AI BRAIN: Integrated with Google Gemini 3.6 Flash
- */
-async function askAiBrain(prompt, context = {}) {
-  const cleanKey = (GEMINI_API_KEY || '').trim();
-  if (!cleanKey) {
-    return "AI brain setup nahi hai (GEMINI_API_KEY environment variable missing hai).";
-  }
-
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${cleanKey}`;
-
-  const payload = {
-    contents: [
-      {
-        parts: [
-          {
-            text: `You are 'Nokar', an intelligent, obedient, and slightly witty autonomous Minecraft survival bot. Respond briefly in Hindi/Hinglish (under 120 chars) fitting the Minecraft context.\nCurrent Bot Context: HP: ${context.hp || 20}, Food: ${context.food || 20}\nUser Prompt: ${prompt}`
-          }
-        ]
+      if (discordChannel) {
+        discordChannel.send('🟢 **Titan Autonomous System V31 (Smelter & Sorter) Online!**');
       }
-    ],
-    generationConfig: {
-      temperature: 0.7,
-      maxOutputTokens: 120
     }
-  };
-
-  try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) {
-      const errBody = await response.text();
-      console.error('[GEMINI API ERROR]', errBody);
-      return "Dimaag kaam nahi kar raha mera abhi...";
-    }
-
-    const data = await response.json();
-    const candidate = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    return candidate ? candidate.trim() : "Main samajh nahi paya boss.";
-  } catch (err) {
-    console.error('[AI ENGINE ERROR]', err.message);
-    return "Network issue aa gaya AI call me.";
-  }
+  });
 }
 
 /**
- * INVENTORY & UTILITIES
+ * ============================================================================
+ * WEAPONS & EQUIPMENT MANAGEMENT
+ * ============================================================================
  */
+async function equipBestWeapon(bot) {
+  const weapons = bot.inventory.items().filter(item => 
+    item.name.includes('sword') || item.name.includes('axe')
+  );
+  if (!weapons.length) return false;
+
+  const weaponPriority = [
+    'netherite_sword',
+    'diamond_sword',
+    'iron_sword',
+    'stone_sword',
+    'wooden_sword',
+    'netherite_axe',
+    'diamond_axe',
+    'iron_axe',
+    'stone_axe',
+    'wooden_axe'
+  ];
+
+  weapons.sort((a, b) => {
+    let aIndex = weaponPriority.indexOf(a.name);
+    let bIndex = weaponPriority.indexOf(b.name);
+    if (aIndex === -1) aIndex = 999;
+    if (bIndex === -1) bIndex = 999;
+    return aIndex - bIndex;
+  });
+
+  try {
+    await bot.equip(weapons[0], 'hand');
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
 async function equipBestTool(bot, targetBlock) {
   if (!targetBlock) return;
-  try {
-    const tools = bot.inventory.items().filter(item => {
-      const name = item.name;
-      return name.includes('pickaxe') || name.includes('axe') || name.includes('shovel') || name.includes('sword');
+  const items = bot.inventory.items();
+  let requiredToolType = '';
+
+  const blockName = targetBlock.name;
+  if (blockName.includes('ore') || blockName.includes('stone') || blockName.includes('cobble') || blockName.includes('deepslate')) {
+    requiredToolType = 'pickaxe';
+  } else if (blockName.includes('log') || blockName.includes('wood') || blockName.includes('plank')) {
+    requiredToolType = 'axe';
+  } else if (blockName.includes('dirt') || blockName.includes('sand') || blockName.includes('gravel') || blockName.includes('clay')) {
+    requiredToolType = 'shovel';
+  } else if (blockName.includes('wheat') || blockName.includes('carrots') || blockName.includes('potatoes')) {
+    requiredToolType = 'hoe';
+  }
+
+  if (!requiredToolType) return;
+
+  const tools = items.filter(item => item.name.includes(requiredToolType));
+  if (tools.length > 0) {
+    try {
+      await bot.equip(tools[0], 'hand');
+    } catch (err) {}
+  }
+}
+
+/**
+ * ============================================================================
+ * AUTO MOB DEFENSE & SENTINEL ENGINE
+ * ============================================================================
+ */
+function startMobDefense(bot) {
+  if (botState.guardInterval) {
+    clearInterval(botState.guardInterval);
+  }
+
+  botState.guardInterval = setInterval(async () => {
+    if (botState.isBusyCrafting || !bot.entity) return;
+
+    const targetMob = bot.nearestEntity(entity => {
+      if (!entity || entity.type !== 'mob') return false;
+      const entityName = (entity.name || entity.displayName || '').toLowerCase();
+      const isHostile = HOSTILE_MOBS.some(h => entityName.includes(h));
+      return isHostile && bot.entity.position.distanceTo(entity.position) <= 10;
     });
 
-    let bestTool = null;
-    let fastestSpeed = 1;
+    if (targetMob) {
+      await equipBestWeapon(bot);
+      const distance = bot.entity.position.distanceTo(targetMob.position);
 
-    for (const tool of tools) {
-      const speed = targetBlock.material ? (tool.getDigTime ? 1000 / tool.getDigTime(targetBlock) : 1) : 1;
-      if (speed > fastestSpeed) {
-        fastestSpeed = speed;
-        bestTool = tool;
+      if (distance > 3.2) {
+        bot.pathfinder.setGoal(new goals.GoalFollow(targetMob, 2.5), false);
+      } else {
+        const aimOffset = targetMob.height ? targetMob.height * 0.75 : 1.2;
+        await bot.lookAt(targetMob.position.offset(0, aimOffset, 0));
+        bot.attack(targetMob);
+      }
+    }
+  }, 350);
+}
+
+function stopMobDefense() {
+  if (botState.guardInterval) {
+    clearInterval(botState.guardInterval);
+  }
+}
+
+/**
+ * ============================================================================
+ * NEW IDEA 1: AUTO-SMELTER SYSTEM (FURNACE AUTOMATION)
+ * ============================================================================
+ */
+async function runAutoSmelter(bot) {
+  if (!botState.autoSmelt) return;
+  const mcData = require('minecraft-data')(bot.version);
+
+  const rawOres = bot.inventory.items().filter(i => 
+    i.name.includes('raw_iron') || i.name.includes('raw_gold') || i.name.includes('raw_copper') || i.name.includes('_ore')
+  );
+
+  if (rawOres.length === 0) return;
+
+  const fuel = bot.inventory.items().filter(i => 
+    i.name.includes('coal') || i.name.includes('charcoal') || i.name.includes('_log') || i.name.includes('_planks')
+  );
+
+  if (fuel.length === 0) return;
+
+  let furnaceBlock = bot.findBlock({ matching: mcData.blocksByName.furnace?.id, maxDistance: 5 });
+  
+  if (!furnaceBlock) {
+    const cobblestone = bot.inventory.items().filter(i => i.name === 'cobblestone');
+    const totalCobble = cobblestone.reduce((acc, cur) => acc + cur.count, 0);
+
+    if (totalCobble >= 8) {
+      const furnaceRecipe = bot.recipesAll(mcData.itemsByName.furnace.id, null, 1)[0];
+      if (furnaceRecipe) {
+        try {
+          await bot.craft(furnaceRecipe, 1, null);
+          bot.chat("🔥 Furnace craft kar liya!");
+          await bot.waitForTicks(10);
+        } catch (e) {}
       }
     }
 
-    if (bestTool) {
-      await bot.equip(bestTool, 'hand');
-    }
-  } catch (e) {
-    // Non-fatal tool equip pass
-  }
-}
+    const furnaceItem = bot.inventory.items().find(i => i.name === 'furnace');
+    const ground = bot.findBlock({ matching: b => b.name !== 'air', maxDistance: 4 });
 
-async function sortAndCleanInventory(bot) {
-  safeChat(bot, "🎒 Inventory sort aur clean kar raha hoon...");
-  const trashItems = ['rotten_flesh', 'poisonous_potato', 'dirt', 'diorite', 'granite', 'andesite', 'cobblestone'];
-
-  for (const item of bot.inventory.items()) {
-    if (trashItems.includes(item.name) && item.count > 64) {
+    if (furnaceItem && ground) {
       try {
-        await bot.toss(item.type, null, item.count - 64);
-        await bot.waitForTicks(2);
-      } catch (err) {}
+        await bot.equip(furnaceItem, 'hand');
+        await bot.placeBlock(ground, new Vec3(0, 1, 0));
+        await bot.waitForTicks(10);
+        furnaceBlock = bot.findBlock({ matching: mcData.blocksByName.furnace?.id, maxDistance: 5 });
+      } catch (e) {}
     }
   }
-  safeChat(bot, "🎒 Inventory saaf ho gayi!");
+
+  if (furnaceBlock) {
+    try {
+      const furnace = await bot.openFurnace(furnaceBlock);
+      const targetOre = rawOres[0];
+      const targetFuel = fuel[0];
+
+      if (furnace.inputItem() === null && targetOre) {
+        await furnace.putInput(targetOre.type, null, Math.min(targetOre.count, 16));
+        bot.chat(`🔥 Pighlane ke liye ${targetOre.name} daala furnace me.`);
+      }
+
+      if (furnace.fuelItem() === null && targetFuel) {
+        await furnace.putFuel(targetFuel.type, null, Math.min(targetFuel.count, 8));
+      }
+
+      furnace.close();
+    } catch (err) {}
+  }
+
+  if (botState.autoSmelt) {
+    botState.smeltingInterval = setTimeout(() => runAutoSmelter(bot), 8000);
+  }
 }
 
-async function dumpToChest(bot) {
+/**
+ * ============================================================================
+ * NEW IDEA 2: ADVANCED INVENTORY SORTER & GARBAGE FILTER
+ * ============================================================================
+ */
+async function sortAndCleanInventory(bot) {
+  const junkItems = ['rotten_flesh', 'spider_eye', 'poisonous_potato', 'dirt', 'cobblestone', 'gravel'];
+  const trashFound = bot.inventory.items().filter(i => junkItems.includes(i.name));
+
+  if (trashFound.length > 0) {
+    bot.chat("🗑️ Inventory clean kar raha hoon (kachra hata raha hoon)...");
+    for (const item of trashFound) {
+      try {
+        if (item.count >= 16) {
+          await bot.tossStack(item);
+          await bot.waitForTicks(2);
+        }
+      } catch (e) {}
+    }
+  }
+
+  const mcData = require('minecraft-data')(bot.version);
   const chestBlock = bot.findBlock({
-    matching: ['chest', 'trapped_chest', 'barrel'].map(name => bot.registry.blocksByName[name]?.id).filter(Boolean),
+    matching: [mcData.blocksByName.chest?.id, mcData.blocksByName.barrel?.id].filter(Boolean),
     maxDistance: 6
   });
 
-  if (!chestBlock) {
-    return safeChat(bot, "Aas-paas koi chest nahi mili.");
+  if (chestBlock) {
+    try {
+      const chestWindow = await bot.openChest(chestBlock);
+      const valuables = bot.inventory.items().filter(i => 
+        i.name.includes('diamond') || i.name.includes('gold') || i.name.includes('iron') || i.name.includes('emerald') || i.name.includes('debris')
+      );
+
+      for (const valItem of valuables) {
+        if (valItem.count > 32) {
+          await chestWindow.deposit(valItem.type, null, 16);
+          await bot.waitForTicks(2);
+        }
+      }
+      chestWindow.close();
+    } catch (e) {}
+  }
+  bot.chat("✨ Inventory sorted and optimized!");
+}
+
+/**
+ * ============================================================================
+ * SMART MULTI-STEP GATHER & CRAFTING SYSTEM
+ * ============================================================================
+ */
+async function smartGatherAndCraft(bot, targetItemName, count = 1) {
+  if (botState.isBusyCrafting) {
+    return bot.chat("Pehle se ek crafting task chal raha hai boss!");
+  }
+
+  botState.isBusyCrafting = true;
+  const mcData = require('minecraft-data')(bot.version);
+  const targetItem = mcData.itemsByName[targetItemName];
+
+  if (!targetItem) {
+    botState.isBusyCrafting = false;
+    return bot.chat(`"${targetItemName}" koi valid Minecraft item nahi hai.`);
+  }
+
+  bot.chat(`🛠️ Checking materials for ${count}x ${targetItemName}...`);
+
+  async function ensureLogsAvailable(minLogs = 3) {
+    const currentLogs = bot.inventory.items().filter(i => i.name.includes('_log'));
+    const totalLogs = currentLogs.reduce((acc, cur) => acc + cur.count, 0);
+
+    if (totalLogs < minLogs) {
+      bot.chat(`🌲 Lakdi kam hai, ped dhoondh raha hoon...`);
+      const logIds = BLOCK_ALIASES['wood'].map(n => mcData.blocksByName[n]?.id).filter(Boolean);
+      const woodBlocks = bot.findBlocks({ matching: logIds, maxDistance: 32, count: 6 });
+
+      if (!woodBlocks.length) {
+        bot.chat("Aas-paas koi ped nahi mila!");
+        return false;
+      }
+
+      const blockTargets = woodBlocks.map(p => bot.blockAt(p));
+      await equipBestTool(bot, blockTargets[0]);
+      try {
+        await bot.collectBlock.collect(blockTargets);
+        bot.chat("Lakdi ikattha kar li!");
+      } catch (err) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  async function craftPlanksIfRequired() {
+    const planks = bot.inventory.items().filter(i => i.name.includes('_planks'));
+    const totalPlanks = planks.reduce((acc, cur) => acc + cur.count, 0);
+
+    if (totalPlanks < 4) {
+      const logs = bot.inventory.items().find(i => i.name.includes('_log'));
+      if (logs) {
+        const plankRecipe = bot.recipesAll(mcData.itemsByName[`${logs.name.replace('_log', '')}_planks`]?.id || mcData.itemsByName['oak_planks'].id, null, 1)[0];
+        if (plankRecipe) {
+          try {
+            await bot.craft(plankRecipe, 2, null);
+            await bot.waitForTicks(5);
+          } catch (e) {}
+        }
+      }
+    }
+  }
+
+  async function ensureCraftingTable() {
+    let tableBlock = bot.findBlock({ matching: mcData.blocksByName.crafting_table?.id, maxDistance: 5 });
+    if (tableBlock) return tableBlock;
+
+    const tableInInv = bot.inventory.items().find(i => i.name === 'crafting_table');
+    if (!tableInInv) {
+      await ensureLogsAvailable(1);
+      await craftPlanksIfRequired();
+      const tableRecipe = bot.recipesAll(mcData.itemsByName.crafting_table.id, null, 1)[0];
+      if (tableRecipe) {
+        await bot.craft(tableRecipe, 1, null);
+        await bot.waitForTicks(5);
+      }
+    }
+
+    const ground = bot.findBlock({
+      matching: (b) => b.name !== 'air' && b.name !== 'water' && b.name !== 'lava',
+      maxDistance: 4
+    });
+
+    if (ground) {
+      const tableItem = bot.inventory.items().find(i => i.name === 'crafting_table');
+      if (tableItem) {
+        await bot.equip(tableItem, 'hand');
+        await bot.placeBlock(ground, new Vec3(0, 1, 0)).catch(() => {});
+        await bot.waitForTicks(10);
+        return bot.findBlock({ matching: mcData.blocksByName.crafting_table?.id, maxDistance: 5 });
+      }
+    }
+    return null;
   }
 
   try {
-    const chest = await bot.openChest(chestBlock);
-    const valuableKeywords = ['diamond', 'debris', 'iron', 'gold', 'emerald', 'ingot', 'raw_iron', 'raw_gold'];
-
-    for (const item of bot.inventory.items()) {
-      const isValuable = valuableKeywords.some(k => item.name.includes(k));
-      if (isValuable) {
-        await chest.deposit(item.type, null, item.count).catch(() => {});
-        await bot.waitForTicks(2);
-      }
+    if (
+      targetItemName.includes('wood') ||
+      targetItemName.includes('plank') ||
+      targetItemName.includes('stick') ||
+      targetItemName.includes('chest') ||
+      targetItemName.includes('crafting_table') ||
+      targetItemName.includes('pickaxe') ||
+      targetItemName.includes('sword') ||
+      targetItemName.includes('axe')
+    ) {
+      await ensureLogsAvailable(3);
+      await craftPlanksIfRequired();
     }
-    chest.close();
-    safeChat(bot, "Valuables chest me rakh diye!");
-  } catch (e) {
-    safeChat(bot, `Chest access error: ${e.message}`);
+
+    let craftingTable = bot.findBlock({ matching: mcData.blocksByName.crafting_table?.id, maxDistance: 5 });
+    let recipes = bot.recipesFor(targetItem.id, null, 1, craftingTable);
+
+    if (!recipes.length) {
+      craftingTable = await ensureCraftingTable();
+      recipes = bot.recipesFor(targetItem.id, null, 1, craftingTable);
+    }
+
+    if (!recipes.length) {
+      bot.chat(`Recipe nahi mili ya ingredients kam hain ${targetItemName} ke liye.`);
+      botState.isBusyCrafting = false;
+      return;
+    }
+
+    await bot.craft(recipes[0], count, craftingTable);
+    bot.chat(`✅ Success! ${count}x ${targetItemName} craft ho gaya.`);
+  } catch (err) {
+    bot.chat(`Crafting error: ${err.message}`);
+  } finally {
+    botState.isBusyCrafting = false;
   }
 }
 
 /**
- * SURVIVAL, ANTI-AFK & COMBAT DEFENSE
+ * ============================================================================
+ * AUTONOMOUS SUB-ROUTINES (AFK, FISH, FARM, BUILD, CHEST DUMP)
+ * ============================================================================
  */
 function startAntiAfk(bot) {
-  if (botState.antiAfk) return;
   botState.antiAfk = true;
-  safeChat(bot, "Anti-AFK mode on!");
+  bot.chat("🚶 Anti-AFK Wander ON!");
+  const origin = bot.entity.position.clone();
 
   botState.antiAfkInterval = setInterval(async () => {
-    if (!botState.antiAfk) return;
-    bot.setControlState('jump', true);
-    setTimeout(() => bot.setControlState('jump', false), 250);
-    await bot.look(Math.random() * Math.PI * 2, (Math.random() - 0.5), true).catch(() => {});
-  }, 12000);
+    if (!botState.antiAfk || botState.followingPlayer || botState.isBusyCrafting) return;
+    try {
+      const offX = Math.floor(Math.random() * 12) - 6;
+      const offZ = Math.floor(Math.random() * 12) - 6;
+      bot.setControlState('jump', Math.random() > 0.5);
+      setTimeout(() => bot.setControlState('jump', false), 300);
+      await bot.pathfinder.goto(new goals.GoalNear(origin.x + offX, origin.y, origin.z + offZ, 1));
+    } catch (e) {}
+  }, 4500);
 }
 
 function stopAntiAfk(bot) {
   botState.antiAfk = false;
   if (botState.antiAfkInterval) {
     clearInterval(botState.antiAfkInterval);
-    botState.antiAfkInterval = null;
   }
   bot.clearControlStates();
 }
 
-let defenseInterval = null;
-function startMobDefense(bot) {
-  if (defenseInterval) return;
-
-  defenseInterval = setInterval(async () => {
-    if (botState.isBusyCrafting) return;
-
-    const target = bot.nearestEntity(e => {
-      if (e.type !== 'mob' && e.type !== 'hostile') return false;
-      const isDangerous = HOSTILE_MOBS.includes(e.name);
-      return isDangerous && bot.entity.position.distanceTo(e.position) <= 8;
-    });
-
-    if (target) {
-      const sword = bot.inventory.items().find(i => i.name.includes('sword') || i.name.includes('axe'));
-      if (sword) await bot.equip(sword, 'hand').catch(() => {});
-
-      await bot.lookAt(target.position.offset(0, target.height * 0.8, 0));
-      bot.attack(target);
-    }
-  }, 600);
-}
-
-function stopMobDefense() {
-  if (defenseInterval) {
-    clearInterval(defenseInterval);
-    defenseInterval = null;
-  }
-}
-
-/**
- * RESOURCE AUTOMATIONS: FISHING, FARMING & SMELTING
- */
 async function startFishing(bot) {
-  if (botState.isFishing) return;
-  botState.isFishing = true;
-  safeChat(bot, "🎣 Fishing shuru kar raha hoon...");
+  const rod = bot.inventory.items().find(i => i.name === 'fishing_rod');
+  if (!rod) {
+    return bot.chat("Mere paas Fishing Rod nahi hai boss!");
+  }
 
-  async function loop() {
+  botState.isFishing = true;
+  bot.chat("🎣 Fishing shuru kar raha hoon...");
+  await bot.equip(rod, 'hand');
+
+  async function cast() {
     if (!botState.isFishing) return;
     try {
-      const rod = bot.inventory.items().find(i => i.name === 'fishing_rod');
-      if (!rod) {
-        safeChat(bot, "Fishing rod nahi mili!");
-        botState.isFishing = false;
-        return;
-      }
-      await bot.equip(rod, 'hand');
       await bot.fish();
-    } catch (e) {
-      await bot.waitForTicks(20);
+      cast();
+    } catch (err) {
+      if (botState.isFishing) {
+        setTimeout(cast, 2000);
+      }
     }
-    if (botState.isFishing) setTimeout(loop, 1000);
   }
-  loop();
+
+  cast();
 }
 
 function stopFishing() {
@@ -302,994 +671,983 @@ function stopFishing() {
 
 async function runFarmLoop(bot) {
   if (!botState.autoFarm) return;
+  const mcData = require('minecraft-data')(bot.version);
+  const cropIds = ['wheat', 'carrots', 'potatoes', 'beetroots'].map(n => mcData.blocksByName[n]?.id).filter(Boolean);
 
-  const matureCrop = bot.findBlock({
-    matching: block => {
-      const name = block.name;
-      const isCrop = name === 'wheat' || name === 'carrots' || name === 'potatoes' || name === 'beetroots';
-      return isCrop && block.metadata === 7;
-    },
-    maxDistance: 16
+  const matureCrops = bot.findBlocks({
+    matching: block => cropIds.includes(block.type) && block.metadata === 7,
+    maxDistance: 24,
+    count: 6
   });
 
-  if (matureCrop) {
+  if (matureCrops.length > 0) {
     try {
-      await bot.collectBlock.collect(matureCrop);
-      const seedType = matureCrop.name === 'wheat' ? 'wheat_seeds' : matureCrop.name;
-      const seedItem = bot.inventory.items().find(i => i.name === seedType);
-
-      if (seedItem) {
-        await bot.equip(seedItem, 'hand');
-        const farmland = bot.blockAt(matureCrop.position.offset(0, -1, 0));
-        if (farmland && farmland.name === 'farmland') {
-          await bot.placeBlock(farmland, new Vec3(0, 1, 0)).catch(() => {});
+      await bot.collectBlock.collect(matureCrops.map(pos => bot.blockAt(pos)));
+      for (const pos of matureCrops) {
+        const soil = bot.blockAt(pos.offset(0, -1, 0));
+        const seed = bot.inventory.items().find(i => 
+          i.name.includes('seeds') || i.name === 'carrot' || i.name === 'potato'
+        );
+        if (soil && soil.name === 'farmland' && seed) {
+          await bot.equip(seed, 'hand');
+          await bot.placeBlock(soil, new Vec3(0, 1, 0)).catch(() => {});
+          await bot.waitForTicks(2);
         }
       }
-    } catch (err) {}
-  }
-
-  botState.farmingInterval = setTimeout(() => runFarmLoop(bot), 3000);
-}
-
-async function runAutoSmelter(bot) {
-  if (!botState.autoSmelt) return;
-
-  const furnaceBlock = bot.findBlock({
-    matching: ['furnace', 'blast_furnace', 'smoker'].map(n => bot.registry.blocksByName[n]?.id).filter(Boolean),
-    maxDistance: 5
-  });
-
-  if (furnaceBlock) {
-    try {
-      const furnace = await bot.openFurnace(furnaceBlock);
-      const ore = bot.inventory.items().find(i => 
-        ['raw_iron', 'raw_gold', 'raw_copper', 'ancient_debris', 'beef', 'porkchop'].includes(i.name)
-      );
-      const fuel = bot.inventory.items().find(i => 
-        ['coal', 'charcoal', 'blaze_rod', 'oak_planks', 'coal_block'].includes(i.name)
-      );
-
-      if (ore && !furnace.inputItem()) {
-        await furnace.putInput(ore.type, null, Math.min(ore.count, 32));
-      }
-      if (fuel && !furnace.fuelItem()) {
-        await furnace.putFuel(fuel.type, null, Math.min(fuel.count, 16));
-      }
-      if (furnace.outputItem()) {
-        await furnace.takeOutput();
-      }
-      furnace.close();
     } catch (e) {}
   }
 
-  botState.smeltingInterval = setTimeout(() => runAutoSmelter(bot), 5000);
-}
-
-/**
- * CRAFTING & BUILDING ENGINE
- */
-async function smartGatherAndCraft(bot, itemName, count = 1) {
-  if (botState.isBusyCrafting) return safeChat(bot, "Main pehle se hi craft kar raha hoon.");
-  botState.isBusyCrafting = true;
-  safeChat(bot, `🔨 Crafting process initiate kiya: ${count}x ${itemName}`);
-
-  try {
-    const mcData = require('minecraft-data')(bot.version);
-    const itemObj = mcData.itemsByName[itemName];
-    if (!itemObj) throw new Error(`Invalid item: ${itemName}`);
-
-    const recipe = bot.recipesFor(itemObj.id, null, 1, null)[0] || bot.recipesFor(itemObj.id, null, 1, true)[0];
-    if (!recipe) {
-      safeChat(bot, `Mujhe ${itemName} ki recipe nahi pata ya requirements meet nahi hui.`);
-      botState.isBusyCrafting = false;
-      return;
-    }
-
-    let craftingTable = null;
-    if (recipe.requiresTable) {
-      craftingTable = bot.findBlock({
-        matching: mcData.blocksByName.crafting_table.id,
-        maxDistance: 6
-      });
-
-      if (!craftingTable) {
-        safeChat(bot, "Crafting table pass me nahi mili.");
-        botState.isBusyCrafting = false;
-        return;
-      }
-    }
-
-    await bot.craft(recipe, count, craftingTable);
-    safeChat(bot, `Successfully crafted ${count}x ${itemName}!`);
-  } catch (err) {
-    safeChat(bot, `Crafting error: ${err.message}`);
-  } finally {
-    botState.isBusyCrafting = false;
+  if (botState.autoFarm) {
+    botState.farmingInterval = setTimeout(() => runFarmLoop(bot), 4000);
   }
 }
 
 async function executeHouseBuild(bot) {
-  safeChat(bot, "🏡 5x5 Shelter build sequence shuru kar raha hoon...");
-  const mcData = require('minecraft-data')(bot.version);
-  const start = bot.entity.position.floored().offset(2, 0, 2);
-
-  const buildingMaterial = bot.inventory.items().find(i => 
-    i.name.includes('cobble') || i.name.includes('planks') || i.name.includes('stone')
+  const getMat = () => bot.inventory.items().find(i => 
+    i.name.includes('plank') || i.name.includes('cobble') || i.name.includes('stone') || i.name.includes('dirt')
   );
-
-  if (!buildingMaterial || buildingMaterial.count < 30) {
-    return safeChat(bot, "Ghar banane ke liye kam se kam 30 blocks chahiye inventory me!");
+  if (!getMat()) {
+    return bot.chat("Ghar banane ke liye blocks nahi hain!");
   }
 
+  bot.chat("🏠 Shelter banana shuru kar raha hoon...");
+  const base = bot.entity.position.floored().offset(1, 0, 1);
+  const layout = [];
+
   for (let y = 0; y < 3; y++) {
-    for (let x = 0; x < 5; x++) {
-      for (let z = 0; z < 5; z++) {
-        const isWall = (x === 0 || x === 4 || z === 0 || z === 4);
-        const isDoorway = (x === 2 && z === 0 && (y === 0 || y === 1));
-
-        if (isWall && !isDoorway) {
-          const placePos = start.offset(x, y, z);
-          const targetBlock = bot.blockAt(placePos);
-
-          if (targetBlock && targetBlock.name === 'air') {
-            await bot.equip(buildingMaterial, 'hand');
-            const ref = bot.blockAt(placePos.offset(0, -1, 0));
-            if (ref && ref.name !== 'air') {
-              await bot.lookAt(placePos);
-              await bot.placeBlock(ref, new Vec3(0, 1, 0)).catch(() => {});
-              await bot.waitForTicks(3);
-            }
-          }
+    for (let x = 0; x < 4; x++) {
+      for (let z = 0; z < 4; z++) {
+        if (x === 0 || x === 3 || z === 0 || z === 3) {
+          if (x === 1 && z === 0 && (y === 0 || y === 1)) continue;
+          layout.push(base.offset(x, y, z));
         }
       }
     }
   }
-  safeChat(bot, "🏡 5x5 Shelter complete!");
+
+  for (let x = 0; x < 4; x++) {
+    for (let z = 0; z < 4; z++) {
+      layout.push(base.offset(x, 3, z));
+    }
+  }
+
+  for (const pos of layout) {
+    const cur = bot.blockAt(pos);
+    if (!cur || cur.name !== 'air') continue;
+    const blockItem = getMat();
+    if (!blockItem) {
+      return bot.chat("Blocks khatam ho gaye!");
+    }
+
+    try {
+      await bot.equip(blockItem, 'hand');
+      if (bot.entity.position.distanceTo(pos) > 4.5) {
+        await bot.pathfinder.goto(new goals.GoalNear(pos.x, pos.y, pos.z, 3)).catch(() => {});
+      }
+      const neighbors = [
+        pos.offset(0, -1, 0),
+        pos.offset(1, 0, 0),
+        pos.offset(-1, 0, 0),
+        pos.offset(0, 0, 1),
+        pos.offset(0, 0, -1)
+      ];
+      for (const n of neighbors) {
+        const nb = bot.blockAt(n);
+        if (nb && nb.name !== 'air') {
+          await bot.lookAt(pos);
+          await bot.placeBlock(nb, pos.minus(n)).catch(() => {});
+          await bot.waitForTicks(3);
+          break;
+        }
+      }
+    } catch (e) {}
+  }
+  bot.chat("Ghar ready ho gaya boss!");
 }
+
+async function dumpToChest(bot) {
+  const mcData = require('minecraft-data')(bot.version);
+  const container = bot.findBlock({
+    matching: [
+      mcData.blocksByName.chest?.id,
+      mcData.blocksByName.trapped_chest?.id,
+      mcData.blocksByName.barrel?.id
+    ].filter(Boolean),
+    maxDistance: 6
+  });
+
+  if (!container) {
+    return bot.chat("Paas me Chest ya Barrel nahi hai!");
+  }
+
+  bot.chat("📦 Saman chest me rakh raha hoon...");
+  try {
+    const window = await bot.openChest(container);
+    for (const item of bot.inventory.items()) {
+      if (item.name.includes('sword') || item.name.includes('pickaxe') || item.name.includes('helmet') || item.name.includes('chestplate')) {
+        continue;
+      }
+      try {
+        await window.deposit(item.type, null, item.count);
+        await bot.waitForTicks(2);
+      } catch (e) {}
+    }
+    window.close();
+    bot.chat("Deposit ho gaya!");
+  } catch (err) {
+    bot.chat(`Chest error: ${err.message}`);
+  }
+}
+
 /**
  * ============================================================================
- * MODULE: WEB OPERATIONS CONSOLE, CANVAS RADAR & REST API (PART 2)
- * FULL EXPANDED DASHBOARD WITH EXPANDED CSS, CANVAS ENGINE & CONTROLS
+ * WEB OPERATIONS CONSOLE (FULL HTML, CSS & JAVASCRIPT UI)
  * ============================================================================
  */
-
-function webInventoryPlugin(bot, options = {}) {
-  const port = options.port || process.env.PORT || 3000;
+function webInventoryPlugin(bot, customOptions = {}) {
+  const port = customOptions.port || process.env.PORT || 3000;
   const app = express();
   const server = http.createServer(app);
-  const io = socketIo(server, {
-    cors: {
-      origin: "*",
-      methods: ["GET", "POST"]
-    }
-  });
+  const io = socketIo(server);
 
   app.use(express.json());
 
-  // Main HTTP Dashboard Route
   app.get('/', (req, res) => {
-    res.send(`<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${bot.username || 'Bot'} | Tactical Command Console</title>
-  <script src="/socket.io/socket.io.js"></script>
-  <style>
-    :root {
-      --bg-main: #0d1117;
-      --bg-card: #161b22;
-      --border-color: #30363d;
-      --text-main: #c9d1d9;
-      --text-muted: #8b949e;
-      --accent-blue: #58a6ff;
-      --accent-hover: #1f6feb;
-      --accent-green: #3fb950;
-      --accent-red: #f85149;
-      --accent-yellow: #d29922;
-      --slot-bg: #21262d;
-      --slot-border: #30363d;
-    }
-
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    body {
-      background-color: var(--bg-main);
-      color: var(--text-main);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      padding: 20px;
-      line-height: 1.5;
-    }
-
-    .header-banner {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      border-bottom: 2px solid var(--border-color);
-      padding-bottom: 15px;
-      margin-bottom: 20px;
-    }
-
-    .header-banner h1 {
-      font-size: 1.6rem;
-      color: #fff;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .live-pill {
-      font-size: 0.8rem;
-      background-color: rgba(63, 185, 80, 0.15);
-      color: var(--accent-green);
-      border: 1px solid var(--accent-green);
-      padding: 4px 12px;
-      border-radius: 20px;
-      text-transform: uppercase;
-      font-weight: 700;
-      letter-spacing: 0.5px;
-    }
-
-    .dashboard-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-      gap: 20px;
-      max-width: 1400px;
-      margin: 0 auto;
-    }
-
-    .card {
-      background-color: var(--bg-card);
-      border: 1px solid var(--border-color);
-      border-radius: 10px;
-      padding: 18px;
-      display: flex;
-      flex-direction: column;
-      gap: 15px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    }
-
-    .card-title {
-      font-size: 1.15rem;
-      font-weight: 600;
-      color: var(--accent-blue);
-      border-bottom: 1px solid var(--border-color);
-      padding-bottom: 10px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .vitals-list {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .vital-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 8px 12px;
-      background-color: var(--bg-main);
-      border: 1px solid var(--border-color);
-      border-radius: 6px;
-      font-size: 0.95rem;
-    }
-
-    .vital-item span {
-      color: var(--text-muted);
-    }
-
-    .vital-item strong {
-      color: #fff;
-      font-family: monospace;
-    }
-
-    .btn-toolbar {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 10px;
-      margin-top: 5px;
-    }
-
-    button {
-      background-color: var(--slot-bg);
-      color: var(--text-main);
-      border: 1px solid var(--border-color);
-      padding: 10px 14px;
-      border-radius: 6px;
-      font-size: 0.9rem;
-      font-weight: 600;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      transition: background-color 0.2s, border-color 0.2s, color 0.2s;
-    }
-
-    button:hover {
-      background-color: var(--accent-hover);
-      border-color: var(--accent-blue);
-      color: #fff;
-    }
-
-    button.btn-danger:hover {
-      background-color: var(--accent-red);
-      border-color: var(--accent-red);
-      color: #fff;
-    }
-
-    button.btn-warning:hover {
-      background-color: var(--accent-yellow);
-      border-color: var(--accent-yellow);
-      color: #000;
-    }
-
-    .radar-wrapper {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 10px;
-    }
-
-    #radarCanvas {
-      background-color: #000000;
-      border: 2px solid var(--border-color);
-      border-radius: 8px;
-      width: 100%;
-      height: 260px;
-    }
-
-    .radar-legend {
-      display: flex;
-      justify-content: center;
-      flex-wrap: wrap;
-      gap: 12px;
-      font-size: 0.8rem;
-      color: var(--text-muted);
-    }
-
-    .legend-item {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-    }
-
-    .legend-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      display: inline-block;
-    }
-
-    .inventory-full-card {
-      grid-column: 1 / -1;
-    }
-
-    .inventory-matrix {
-      display: grid;
-      grid-template-columns: repeat(9, 1fr);
-      gap: 6px;
-      background-color: #000000;
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      padding: 12px;
-    }
-
-    .inv-slot {
-      aspect-ratio: 1;
-      background-color: var(--slot-bg);
-      border: 1px solid var(--slot-border);
-      border-radius: 4px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 4px;
-      position: relative;
-      user-select: none;
-    }
-
-    .inv-slot.hotbar-slot {
-      border: 2px solid var(--accent-blue);
-      background-color: #1a2230;
-    }
-
-    .inv-item-name {
-      font-size: 0.7rem;
-      color: #fff;
-      text-align: center;
-      word-break: break-word;
-      line-height: 1.1;
-      max-height: 2.2em;
-      overflow: hidden;
-    }
-
-    .inv-item-qty {
-      position: absolute;
-      bottom: 2px;
-      right: 4px;
-      font-size: 0.75rem;
-      font-weight: bold;
-      color: #fff;
-      text-shadow: 1px 1px 2px #000;
-      font-family: monospace;
-    }
-
-    .dpad-container {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
-      max-width: 200px;
-      margin: 0 auto;
-      padding: 10px 0;
-    }
-
-    .terminal-window {
-      background-color: #000000;
-      border: 1px solid var(--border-color);
-      border-radius: 6px;
-      height: 180px;
-      overflow-y: auto;
-      padding: 10px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      font-family: "Courier New", Courier, monospace;
-      font-size: 0.85rem;
-    }
-
-    .terminal-entry {
-      color: var(--text-main);
-      border-bottom: 1px solid #161b22;
-      padding-bottom: 2px;
-    }
-
-    .command-input-row {
-      display: flex;
-      gap: 10px;
-      margin-top: 10px;
-    }
-
-    .command-input-row input {
-      flex: 1;
-      background-color: var(--bg-main);
-      border: 1px solid var(--border-color);
-      border-radius: 6px;
-      color: #fff;
-      padding: 10px 14px;
-      font-size: 0.9rem;
-      font-family: monospace;
-    }
-
-    .command-input-row input:focus {
-      outline: none;
-      border-color: var(--accent-blue);
-    }
-  </style>
-</head>
-<body>
-
-  <div class="header-banner">
-    <h1>🛡️ Command Matrix: ${bot.username || 'Bot'}</h1>
-    <div class="live-pill" id="agentStatusBadge">CONNECTED</div>
-  </div>
-
-  <div class="dashboard-grid">
-
-    <!-- BOT VITALS & METRICS -->
-    <div class="card">
-      <div class="card-title">
-        <span>Unit Diagnostics</span>
-        <span id="dimensionLabel" style="font-size: 0.85rem; color: var(--accent-yellow);">Overworld</span>
-      </div>
-      <div class="vitals-list">
-        <div class="vital-item">
-          <span>Identity Callout</span>
-          <strong id="botUsernameLabel">Acquiring...</strong>
-        </div>
-        <div class="vital-item">
-          <span>World Coordinates</span>
-          <strong id="botCoordinatesLabel">X: 0, Y: 0, Z: 0</strong>
-        </div>
-        <div class="vital-item">
-          <span>Armor / HP Level</span>
-          <strong id="botHealthLabel" style="color: var(--accent-green);">20 / 20</strong>
-        </div>
-        <div class="vital-item">
-          <span>Food / Stamina</span>
-          <strong id="botFoodLabel" style="color: var(--accent-yellow);">20 / 20</strong>
-        </div>
-      </div>
-
-      <div class="btn-toolbar">
-        <button class="btn-danger" onclick="triggerCommand('stop')">🛑 Halt Task</button>
-        <button onclick="triggerCommand('afk')">🔄 Anti-AFK</button>
-        <button onclick="triggerCommand('guard')">🛡️ Guard Patrol</button>
-        <button class="btn-warning" onclick="triggerCommand('netherite')">🔥 Netherite Run</button>
-        <button onclick="triggerCommand('sort')">🎒 Clean Bag</button>
-        <button onclick="triggerCommand('smelt')">🔥 Smelt Ores</button>
-      </div>
-    </div>
-
-    <!-- 2D TACTICAL RADAR CANVAS -->
-    <div class="card">
-      <div class="card-title">
-        <span>32-Block Perimeter Radar</span>
-      </div>
-      <div class="radar-wrapper">
-        <canvas id="radarCanvas" width="300" height="260"></canvas>
-        <div class="radar-legend">
-          <div class="legend-item"><span class="legend-dot" style="background-color: var(--accent-green);"></span> Bot</div>
-          <div class="legend-item"><span class="legend-dot" style="background-color: var(--accent-blue);"></span> Players</div>
-          <div class="legend-item"><span class="legend-dot" style="background-color: var(--accent-red);"></span> Hostiles</div>
-          <div class="legend-item"><span class="legend-dot" style="background-color: var(--accent-yellow);"></span> Key Ores</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- LIVE 36-SLOT INVENTORY GRID -->
-    <div class="card inventory-full-card">
-      <div class="card-title">
-        <span>Realtime Inventory Matrix (Slots 0 - 35)</span>
-        <span style="font-size: 0.8rem; color: var(--text-muted);">Slots 27-35 indicate Hotbar</span>
-      </div>
-      <div class="inventory-matrix" id="inventoryGridContainer"></div>
-    </div>
-
-    <!-- MANUAL DPAD NAVIGATION -->
-    <div class="card">
-      <div class="card-title">
-        <span>Locomotion & D-Pad</span>
-      </div>
-      <div class="dpad-container">
-        <div></div>
-        <button onclick="sendManualMove('forward')">⬆️ Forward</button>
-        <div></div>
-        <button onclick="sendManualMove('left')">⬅️ Left</button>
-        <button onclick="sendManualMove('jump')" style="background-color: var(--accent-blue); color: #fff;">🦘 Jump</button>
-        <button onclick="sendManualMove('right')">➡️ Right</button>
-        <div></div>
-        <button onclick="sendManualMove('back')">⬇️ Back</button>
-        <div></div>
-      </div>
-    </div>
-
-    <!-- DISPATCH TERMINAL -->
-    <div class="card">
-      <div class="card-title">
-        <span>Terminal Dispatch & Chat Stream</span>
-      </div>
-      <div class="terminal-window" id="terminalOutput"></div>
-      <form class="command-input-row" onsubmit="event.preventDefault(); submitTerminalCommand();">
-        <input type="text" id="terminalInput" placeholder="Enter command (e.g. mine diamond 3, come, fish)..." />
-        <button type="submit" style="background-color: var(--accent-blue); color: #fff;">Dispatch</button>
-      </form>
-    </div>
-
-  </div>
-
-  <script>
-    const socket = io();
-    const canvas = document.getElementById('radarCanvas');
-    const ctx = canvas.getContext('2d');
-
-    socket.on('bot_sync', (state) => {
-      document.getElementById('botUsernameLabel').innerText = state.username || 'Nokar';
-      document.getElementById('botCoordinatesLabel').innerText = 
-        \`X: \${Math.round(state.coords.x)}, Y: \${Math.round(state.coords.y)}, Z: \${Math.round(state.coords.z)}\`;
-      document.getElementById('botHealthLabel').innerText = \`\${Math.round(state.health)} / 20 HP\`;
-      document.getElementById('botFoodLabel').innerText = \`\${Math.round(state.food)} / 20 Hunger\`;
-      document.getElementById('dimensionLabel').innerText = state.dimension;
-
-      updateInventoryView(state.inventory);
-      paintTacticalRadar(state.coords, state.entities, state.ores);
-    });
-
-    socket.on('chat_feed', (text) => {
-      const output = document.getElementById('terminalOutput');
-      const entry = document.createElement('div');
-      entry.className = 'terminal-entry';
-      entry.innerText = text;
-      output.appendChild(entry);
-      output.scrollTop = output.scrollHeight;
-    });
-
-    function updateInventoryView(items) {
-      const container = document.getElementById('inventoryGridContainer');
-      container.innerHTML = '';
-
-      for (let slotIndex = 0; slotIndex < 36; slotIndex++) {
-        const slotEl = document.createElement('div');
-        slotEl.className = 'inv-slot' + (slotIndex >= 27 ? ' hotbar-slot' : '');
-
-        const mappedIndex = (slotIndex < 9) ? (slotIndex + 36) : slotIndex;
-        const matchingItem = items.find(i => i.slot === mappedIndex);
-
-        if (matchingItem) {
-          const nameSpan = document.createElement('span');
-          nameSpan.className = 'inv-item-name';
-          nameSpan.innerText = matchingItem.name.replace(/_/g, ' ');
-          slotEl.appendChild(nameSpan);
-
-          if (matchingItem.count > 1) {
-            const countSpan = document.createElement('span');
-            countSpan.className = 'inv-item-qty';
-            countSpan.innerText = matchingItem.count;
-            slotEl.appendChild(countSpan);
+    res.send(`
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+        <title>Titan Master Console V31</title>
+        <script src="/socket.io/socket.io.js"></script>
+        <style>
+          * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
           }
-        }
-        container.appendChild(slotEl);
-      }
-    }
-
-    function paintTacticalRadar(origin, entities, ores) {
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      const centerX = canvas.width / 2;
-      const centerY = canvas.height / 2;
-      const scale = 3.5;
-
-      ctx.strokeStyle = '#21262d';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, 30, 0, Math.PI * 2);
-      ctx.arc(centerX, centerY, 60, 0, Math.PI * 2);
-      ctx.arc(centerX, centerY, 90, 0, Math.PI * 2);
-      ctx.stroke();
-
-      // Draw Self
-      ctx.fillStyle = '#3fb950';
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, 5, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Draw Ores
-      if (ores && ores.length) {
-        ores.forEach(ore => {
-          const dx = (ore.x - origin.x) * scale;
-          const dz = (ore.z - origin.z) * scale;
-          ctx.fillStyle = '#d29922';
-          ctx.fillRect(centerX + dx - 2, centerY + dz - 2, 4, 4);
-        });
-      }
-
-      // Draw Entities
-      if (entities && entities.length) {
-        entities.forEach(ent => {
-          const dx = (ent.x - origin.x) * scale;
-          const dz = (ent.z - origin.z) * scale;
-
-          if (ent.isPlayer) {
-            ctx.fillStyle = '#58a6ff';
-            ctx.beginPath();
-            ctx.arc(centerX + dx, centerY + dz, 4, 0, Math.PI * 2);
-            ctx.fill();
-          } else if (ent.isHostile) {
-            ctx.fillStyle = '#f85149';
-            ctx.beginPath();
-            ctx.arc(centerX + dx, centerY + dz, 4, 0, Math.PI * 2);
-            ctx.fill();
-          } else {
-            ctx.fillStyle = '#8b949e';
-            ctx.fillRect(centerX + dx - 2, centerY + dz - 2, 3, 3);
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #070a13;
+            color: #e2e8f0;
+            display: flex;
+            justify-content: center;
+            padding: 10px;
           }
-        });
-      }
-    }
+          .panel {
+            width: 100%;
+            max-width: 520px;
+            background: #111827;
+            border-radius: 14px;
+            border: 1px solid #1f2937;
+            padding: 14px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+          }
+          .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+          }
+          .title {
+            font-size: 17px;
+            font-weight: 800;
+            color: #38bdf8;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+          
+          .chat-box {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 12px;
+          }
+          .chat-input {
+            flex: 1;
+            padding: 10px 12px;
+            background: #030712;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 13px;
+            outline: none;
+          }
+          .chat-input:focus {
+            border-color: #38bdf8;
+          }
+          .chat-btn {
+            background: #0284c7;
+            padding: 10px 16px;
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 13px;
+          }
+          
+          .ctrl-wrapper {
+            background: #030712;
+            border: 1px solid #1f2937;
+            border-radius: 10px;
+            padding: 10px;
+            margin-bottom: 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+          }
+          .dpad {
+            display: grid;
+            grid-template-columns: repeat(3, 46px);
+            grid-template-rows: repeat(3, 46px);
+            gap: 5px;
+            margin-bottom: 10px;
+          }
+          .ctrl-btn {
+            background: #1f2937;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            color: white;
+            font-size: 17px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+          }
+          .ctrl-btn:active {
+            background: #0284c7;
+            transform: scale(0.95);
+          }
+          
+          .manual-actions {
+            display: flex;
+            gap: 6px;
+            width: 100%;
+            max-width: 270px;
+          }
+          .manual-btn {
+            padding: 9px;
+            border-radius: 8px;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+            color: white;
+            flex: 1;
+            font-size: 12px;
+          }
+          .manual-btn:active {
+            transform: scale(0.95);
+          }
 
-    function triggerCommand(cmd) {
-      socket.emit('dispatch_command', { cmd: cmd });
-    }
+          .action-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px;
+            margin-bottom: 12px;
+          }
+          .act-btn {
+            padding: 10px;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            color: white;
+            font-size: 11px;
+            cursor: pointer;
+          }
+          .act-btn:active {
+            transform: scale(0.97);
+          }
+          
+          .btn-guard { background: #dc2626; } 
+          .btn-afk { background: #6366f1; } 
+          .btn-chest { background: #d97706; } 
+          .btn-fish { background: #0891b2; }
+          .btn-farm { background: #059669; } 
+          .btn-build { background: #2563eb; } 
+          .btn-drop { background: #e11d48; } 
+          .btn-smelt { background: #ea580c; }
+          .btn-sort { background: #7c3aed; }
+          .btn-stop { background: #991b1b; grid-column: span 2; padding: 12px; font-size: 13px; }
+          
+          .bot-pos-bar {
+            width: 100%;
+            background: #030712;
+            border: 1px solid #1e293b;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #38bdf8;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+          }
 
-    function sendManualMove(dir) {
-      socket.emit('manual_action', { type: 'move', dir: dir });
-    }
+          .radar-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #030712;
+            border-radius: 10px;
+            border: 1px solid #1f2937;
+            padding: 10px;
+            margin-bottom: 12px;
+          }
+          #radarCanvas {
+            background: #050811;
+            border-radius: 8px;
+            border: 1px solid #374151;
+            width: 280px;
+            height: 280px;
+            display: block;
+          }
+          
+          .radar-filter-btn {
+            width: 100%;
+            margin-top: 8px;
+            padding: 8px;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            color: #38bdf8;
+            font-size: 11px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+          }
+          .radar-filter-btn:active {
+            transform: scale(0.98);
+          }
+          
+          .radar-legend {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px;
+            font-size: 10px;
+            margin-top: 8px;
+            color: #9ca3af;
+          }
+          .dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 3px;
+            vertical-align: middle;
+          }
+          
+          .radar-list {
+            width: 100%;
+            max-height: 120px;
+            overflow-y: auto;
+            background: #0b1120;
+            border-radius: 6px;
+            padding: 6px 8px;
+            margin-top: 8px;
+            font-size: 11px;
+            border: 1px solid #1e293b;
+          }
+          .radar-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 3px 0;
+            border-bottom: 1px solid #1e293b;
+          }
+          
+          .meters {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            margin-bottom: 12px;
+          }
+          .meter {
+            background: #030712;
+            padding: 8px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #1f2937;
+          }
+          .meter-val {
+            font-size: 16px;
+            font-weight: bold;
+          }
+          
+          .section-title {
+            font-size: 11px;
+            font-weight: bold;
+            color: #94a3b8;
+            margin: 8px 0 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+          .grid {
+            display: grid;
+            grid-template-columns: repeat(9, 1fr);
+            gap: 4px;
+            background: #030712;
+            padding: 6px;
+            border-radius: 8px;
+            border: 1px solid #1f2937;
+            margin-bottom: 8px;
+          }
+          .slot {
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 4px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            cursor: pointer;
+          }
+          .slot:active {
+            border-color: #38bdf8;
+            background: #0f172a;
+            transform: scale(0.95);
+          }
+          .item-name {
+            font-size: 8px;
+            color: #f1f5f9;
+            text-align: center;
+            line-height: 1.1;
+            padding: 2px;
+            word-break: break-word;
+            font-weight: 500;
+          }
+          .item-count {
+            position: absolute;
+            bottom: 1px;
+            right: 2px;
+            font-size: 9px;
+            font-weight: 900;
+            color: #38bdf8;
+            background: rgba(0,0,0,0.7);
+            border-radius: 2px;
+            padding: 0 2px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="panel">
+          <div class="top-bar">
+            <div class="title">🎮 Titan Master Console</div>
+            <div style="font-size:11px; color:#22c55e; font-weight:bold;">● Live Connected</div>
+          </div>
+          
+          <div class="chat-box">
+            <input type="text" id="chatMsg" class="chat-input" placeholder="Chat in game or type craft/mine commands...">
+            <button class="chat-btn" onclick="sendChat()">Send</button>
+          </div>
 
-    function submitTerminalCommand() {
-      const input = document.getElementById('terminalInput');
-      const text = input.value.trim();
-      if (text) {
-        socket.emit('dispatch_command', { cmd: text });
-        input.value = '';
-      }
-    }
-  </script>
-</body>
-</html>`);
+          <div class="ctrl-wrapper">
+            <div class="dpad">
+              <div></div>
+              <button class="ctrl-btn" onpointerdown="startMove('forward')" onpointerup="stopMove('forward')" onpointerleave="stopMove('forward')">⬆️</button>
+              <div></div>
+              <button class="ctrl-btn" onpointerdown="startMove('left')" onpointerup="stopMove('left')" onpointerleave="stopMove('left')">⬅️</button>
+              <button class="ctrl-btn" onclick="jump()">🦘</button>
+              <button class="ctrl-btn" onpointerdown="startMove('right')" onpointerup="stopMove('right')" onpointerleave="stopMove('right')">➡️</button>
+              <div></div>
+              <button class="ctrl-btn" onpointerdown="startMove('back')" onpointerup="stopMove('back')" onpointerleave="stopMove('back')">⬇️</button>
+              <div></div>
+            </div>
+            <div class="manual-actions">
+              <button class="manual-btn" style="background:#b91c1c;" onclick="socket.emit('manual_action', 'attack')">⚔️ Attack</button>
+              <button class="manual-btn" style="background:#57534e;" onclick="socket.emit('manual_action', 'mine')">⛏️ Mine</button>
+              <button class="manual-btn" style="background:#854d0e;" onclick="socket.emit('manual_action', 'place')">🧱 Place</button>
+            </div>
+          </div>
+
+          <div class="action-grid">
+            <button class="act-btn btn-guard" id="guardBtn" onclick="send('toggle_guard')">🛡️ Auto-Defense: ON</button>
+            <button class="act-btn btn-afk" id="afkBtn" onclick="send('toggle_afk')">🚶 AFK: OFF</button>
+            <button class="act-btn btn-fish" id="fishBtn" onclick="send('toggle_fish')">🎣 Fish: OFF</button>
+            <button class="act-btn btn-farm" id="farmBtn" onclick="send('toggle_farm')">🌾 Farm: OFF</button>
+            <button class="act-btn btn-smelt" id="smeltBtn" onclick="send('toggle_smelt')">🔥 Smelter: OFF</button>
+            <button class="act-btn btn-sort" onclick="send('sort_inv')">🎒 Sort Inventory</button>
+            <button class="act-btn btn-build" onclick="send('build_house')">🏠 Build House</button>
+            <button class="act-btn btn-chest" onclick="send('dump_chest')">📦 Dump Chest</button>
+            <button class="act-btn btn-drop" onclick="send('drop_hand')">🗑️ Drop Hand</button>
+            <button class="act-btn btn-stop" onclick="send('stop')">🛑 Stop All</button>
+          </div>
+
+          <!-- Bot Live Position Badge -->
+          <div class="bot-pos-bar">
+            <span>📍 My Position:</span>
+            <span id="botCoords">X: 0 | Y: 0 | Z: 0</span>
+          </div>
+
+          <div class="radar-card">
+            <canvas id="radarCanvas" width="280" height="280"></canvas>
+            
+            <!-- X-Ray Filter Toggle Button -->
+            <button class="radar-filter-btn" id="xrayToggleBtn" onclick="toggleXray()">🔍 Ores & Chests: ON</button>
+            
+            <div class="radar-legend">
+              <div><span class="dot" style="background:#22c55e;"></span>Bot</div>
+              <div><span class="dot" style="background:#38bdf8;"></span>Player</div>
+              <div><span class="dot" style="background:#ef4444;"></span>Mob</div>
+              <span id="legendOres">
+                <div><span class="dot" style="background:#eab308;"></span>Chest</div>
+                <div><span class="dot" style="background:#06b6d4;"></span>Diamond</div>
+                <div><span class="dot" style="background:#f97316;"></span>Iron</div>
+                <div><span class="dot" style="background:#fbbf24;"></span>Gold</div>
+                <div><span class="dot" style="background:#8b5cf6;"></span>Debris</div>
+              </span>
+            </div>
+            
+            <div class="radar-list" id="radarList">
+              <div style="color:#64748b; text-align:center;">Scanning surroundings...</div>
+            </div>
+          </div>
+
+          <div class="meters">
+            <div class="meter"><div class="meter-val" style="color:#f43f5e;" id="hp">20 / 20</div><div style="font-size:10px;">❤️ Health</div></div>
+            <div class="meter"><div class="meter-val" style="color:#fbbf24;" id="food">20 / 20</div><div style="font-size:10px;">🍖 Hunger</div></div>
+          </div>
+
+          <div class="section-title">Hotbar (Tap: Equip | Double Tap: Drop)</div>
+          <div class="grid" id="hotbarGrid"></div>
+          
+          <div class="section-title">Main Inventory Storage</div>
+          <div class="grid" id="mainGrid"></div>
+        </div>
+
+        <script>
+          const socket = io();
+          const canvas = document.getElementById('radarCanvas');
+          const ctx = canvas.getContext('2d');
+          const cX = 140, cY = 140, scale = 5.5;
+
+          let showOresAndChests = true;
+
+          const main = document.getElementById('mainGrid');
+          const hotbar = document.getElementById('hotbarGrid');
+
+          for (let i = 36; i <= 44; i++) {
+            hotbar.innerHTML += '<div class="slot" id="s-' + i + '" onclick="slotClick(' + i + ')" ondblclick="slotDrop(' + i + ')"></div>';
+          }
+          for (let i = 9; i <= 35; i++) {
+            main.innerHTML += '<div class="slot" id="s-' + i + '" onclick="slotClick(' + i + ')" ondblclick="slotDrop(' + i + ')"></div>';
+          }
+
+          function slotClick(id) { socket.emit('equip_slot', { slot: id }); }
+          function slotDrop(id) { socket.emit('drop_slot', { slot: id }); }
+          function startMove(dir) { socket.emit('control_move', { direction: dir, state: true }); }
+          function stopMove(dir) { socket.emit('control_move', { direction: dir, state: false }); }
+          function jump() { socket.emit('control_jump'); }
+
+          function toggleXray() {
+            showOresAndChests = !showOresAndChests;
+            const btn = document.getElementById('xrayToggleBtn');
+            const legendOres = document.getElementById('legendOres');
+            if (showOresAndChests) {
+              btn.innerText = '🔍 Ores & Chests: ON';
+              btn.style.color = '#38bdf8';
+              legendOres.style.display = 'inline';
+            } else {
+              btn.innerText = '🚫 Ores & Chests: OFF (Only Players & Mobs)';
+              btn.style.color = '#94a3b8';
+              legendOres.style.display = 'none';
+            }
+          }
+
+          function sendChat() {
+            const input = document.getElementById('chatMsg');
+            if (input.value.trim()) {
+              socket.emit('send_chat', { message: input.value.trim() });
+              input.value = '';
+            }
+          }
+          document.getElementById('chatMsg').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendChat();
+          });
+
+          socket.on('radar', data => {
+            ctx.clearRect(0, 0, 280, 280);
+
+            // Update Bot Coordinates
+            if (data.bot) {
+              document.getElementById('botCoords').innerText = 'X: ' + Math.round(data.bot.x) + ' | Y: ' + Math.round(data.bot.y) + ' | Z: ' + Math.round(data.bot.z);
+            }
+
+            // Concentric Rings
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 1;
+            [35, 70, 105].forEach(r => {
+              ctx.beginPath();
+              ctx.arc(cX, cY, r, 0, Math.PI * 2);
+              ctx.stroke();
+            });
+
+            // Grid Crosshairs
+            ctx.strokeStyle = '#0f172a';
+            ctx.beginPath(); ctx.moveTo(cX, 0); ctx.lineTo(cX, 280); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, cY); ctx.lineTo(280, cY); ctx.stroke();
+
+            // Compass Markers
+            ctx.fillStyle = '#64748b';
+            ctx.font = 'bold 10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('N', cX, 12);
+            ctx.fillText('S', cX, 275);
+            ctx.fillText('W', 10, cY + 4);
+            ctx.fillText('E', 270, cY + 4);
+
+            let listHTML = '';
+
+            data.entities.forEach(e => {
+              const isOreOrChest = (e.type !== 'player' && e.type !== 'mob');
+              if (!showOresAndChests && isOreOrChest) {
+                return;
+              }
+
+              const dx = e.x - data.bot.x;
+              const dz = e.z - data.bot.z;
+              const pX = cX + dx * scale;
+              const pY = cY + dz * scale;
+              const dist = Math.round(Math.sqrt(dx * dx + dz * dz));
+
+              let dir = '';
+              if (dz < -2) dir += 'North ';
+              else if (dz > 2) dir += 'South ';
+              if (dx > 2) dir += 'East';
+              else if (dx < -2) dir += 'West';
+              if (!dir) dir = 'Near';
+
+              // Color Mapping
+              let color = '#38bdf8';
+              if (e.type === 'mob') color = '#ef4444';
+              else if (e.type === 'chest') color = '#eab308';
+              else if (e.type === 'diamond') color = '#06b6d4';
+              else if (e.type === 'debris') color = '#8b5cf6';
+              else if (e.type === 'gold') color = '#fbbf24';
+              else if (e.type === 'iron') color = '#f97316';
+              else if (e.type === 'copper') color = '#ea580c';
+              else if (e.type === 'lapis') color = '#2563eb';
+              else if (e.type === 'coal') color = '#64748b';
+
+              // Clean Glowing Dots on Canvas
+              if (pX >= 4 && pX <= 276 && pY >= 4 && pY <= 276) {
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                const radius = (e.type === 'player' || e.type === 'mob') ? 5 : 3.5;
+                ctx.arc(pX, pY, radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                if (e.type === 'diamond' || e.type === 'debris' || e.type === 'player') {
+                  ctx.strokeStyle = color;
+                  ctx.lineWidth = 1;
+                  ctx.beginPath();
+                  ctx.arc(pX, pY, radius + 2, 0, Math.PI * 2);
+                  ctx.stroke();
+                }
+              }
+
+              // Build Exact Coordinates HUD Item
+              let exactCoords = '[X:' + Math.round(e.x) + ' Y:' + (e.y !== undefined ? Math.round(e.y) : '?') + ' Z:' + Math.round(e.z) + ']';
+              
+              listHTML += '<div class="radar-item">' +
+                '<span style="color:' + color + '; font-weight:600;">● ' + e.name + '</span>' +
+                '<span style="color:#94a3b8;">' + dist + 'm ' + dir + ' ' + exactCoords + '</span>' +
+                '</div>';
+            });
+
+            document.getElementById('radarList').innerHTML = listHTML || '<div style="color:#64748b; text-align:center;">No targets nearby</div>';
+
+            // Center Bot Marker
+            ctx.fillStyle = '#22c55e';
+            ctx.beginPath();
+            ctx.arc(cX, cY, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+          });
+
+          socket.on('sync', data => {
+            if (data.hp !== undefined) document.getElementById('hp').innerText = Math.round(data.hp) + ' / 20';
+            if (data.food !== undefined) document.getElementById('food').innerText = Math.round(data.food) + ' / 20';
+            for (let i = 9; i <= 44; i++) {
+              const el = document.getElementById('s-' + i);
+              if (!el) continue;
+              const item = data.items.find(x => x.slot === i);
+              if (item) {
+                let cleanName = item.name.replace(/_/g, ' ');
+                el.innerHTML = '<span class="item-name">' + cleanName + '</span>' + (item.count > 1 ? '<span class="item-count">' + item.count + '</span>' : '');
+                el.style.background = '#1e293b';
+              } else {
+                el.innerHTML = '';
+                el.style.background = '#0f172a';
+              }
+            }
+          });
+
+          function send(act) {
+            fetch('/api/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: act })
+            })
+            .then(r => r.json())
+            .then(d => {
+              if (act === 'toggle_afk') document.getElementById('afkBtn').innerText = '🚶 AFK: ' + (d.state ? 'ON' : 'OFF');
+              if (act === 'toggle_guard') document.getElementById('guardBtn').innerText = '🛡️ Auto-Defense: ' + (d.state ? 'ON' : 'OFF');
+              if (act === 'toggle_fish') document.getElementById('fishBtn').innerText = '🎣 Fish: ' + (d.state ? 'ON' : 'OFF');
+              if (act === 'toggle_farm') document.getElementById('farmBtn').innerText = '🌾 Farm: ' + (d.state ? 'ON' : 'OFF');
+              if (act === 'toggle_smelt') document.getElementById('smeltBtn').innerText = '🔥 Smelter: ' + (d.state ? 'ON' : 'OFF');
+            });
+          }
+        </script>
+      </body>
+      </html>
+    `);
   });
 
-  // State Synchronization Engine
-  function syncState() {
-    if (!bot.entity) return;
+  app.post('/api/action', async (req, res) => {
+    const act = req.body.action;
 
-    const inventoryItems = bot.inventory.items().map(i => ({
-      slot: i.slot,
-      name: i.name,
-      count: i.count
-    }));
+    if (act === 'toggle_afk') {
+      botState.antiAfk ? stopAntiAfk(bot) : startAntiAfk(bot);
+      return res.json({ success: true, state: botState.antiAfk });
+    }
+    if (act === 'toggle_guard') {
+      botState.guardMode = !botState.guardMode;
+      if (botState.guardMode) {
+        startMobDefense(bot);
+      } else {
+        stopMobDefense();
+      }
+      return res.json({ success: true, state: botState.guardMode });
+    }
+    if (act === 'toggle_fish') {
+      botState.isFishing ? stopFishing() : startFishing(bot);
+      return res.json({ success: true, state: botState.isFishing });
+    }
+    if (act === 'toggle_farm') {
+      botState.autoFarm = !botState.autoFarm;
+      if (botState.autoFarm) {
+        runFarmLoop(bot);
+      } else {
+        clearTimeout(botState.farmingInterval);
+      }
+      return res.json({ success: true, state: botState.autoFarm });
+    }
+    if (act === 'toggle_smelt') {
+      botState.autoSmelt = !botState.autoSmelt;
+      if (botState.autoSmelt) {
+        runAutoSmelter(bot);
+      } else {
+        clearTimeout(botState.smeltingInterval);
+      }
+      return res.json({ success: true, state: botState.autoSmelt });
+    }
+    if (act === 'sort_inv') {
+      sortAndCleanInventory(bot);
+      return res.json({ success: true });
+    }
+    if (act === 'build_house') {
+      executeHouseBuild(bot);
+      return res.json({ success: true });
+    }
+    if (act === 'dump_chest') {
+      dumpToChest(bot);
+      return res.json({ success: true });
+    }
+    if (act === 'drop_hand') {
+      const held = bot.heldItem;
+      if (held) bot.tossStack(held).catch(() => {});
+      return res.json({ success: true });
+    }
+    if (act === 'stop') {
+      botState.followingPlayer = null;
+      botState.isBusyCrafting = false;
+      botState.autoSmelt = false;
+      clearTimeout(botState.smeltingInterval);
+      stopAntiAfk(bot);
+      stopFishing();
+      botState.autoFarm = false;
+      clearTimeout(botState.farmingInterval);
 
-    const nearbyEntities = Object.values(bot.entities)
-      .filter(e => e !== bot.entity && e.position && bot.entity.position.distanceTo(e.position) <= 32)
-      .map(e => ({
-        x: e.position.x,
-        z: e.position.z,
-        isPlayer: e.type === 'player',
-        isHostile: HOSTILE_MOBS.includes(e.name)
-      }));
+      bot.clearControlStates();
+      bot.pathfinder.stop();
+      bot.collectBlock.cancelTask();
+      bot.chat("Sab stop kar diya!");
+      return res.json({ success: true });
+    }
 
-    let foundOres = [];
-    try {
-      const mcData = require('minecraft-data')(bot.version || '1.20.1');
-      const targetOreIds = [
-        'diamond_ore', 'deepslate_diamond_ore',
-        'ancient_debris', 'iron_ore', 'deepslate_iron_ore',
-        'gold_ore', 'deepslate_gold_ore'
-      ].map(name => mcData.blocksByName[name]?.id).filter(Boolean);
+    res.json({ success: false });
+  });
 
-      foundOres = bot.findBlocks({
-        matching: targetOreIds,
-        maxDistance: 24,
-        count: 25
-      }).map(pos => ({ x: pos.x, z: pos.z }));
-    } catch (err) {}
-
-    io.emit('bot_sync', {
-      username: bot.username || 'Bot',
-      coords: bot.entity.position,
-      health: bot.health || 20,
-      food: bot.food || 20,
-      dimension: (bot.game && bot.game.dimension) ? bot.game.dimension : 'minecraft:overworld',
-      inventory: inventoryItems,
-      entities: nearbyEntities,
-      ores: foundOres
-    });
-  }
-
-  // Periodic State Broadcast
-  setInterval(syncState, 1500);
-
-  // Client Web Socket Listeners
   io.on('connection', (socket) => {
     syncState();
 
-    socket.on('dispatch_command', (data) => {
-      if (data && data.cmd) {
-        bot.emit('messagestr', data.cmd);
+    socket.on('control_move', data => bot.setControlState(data.direction, !!data.state));
+    socket.on('control_jump', () => {
+      bot.setControlState('jump', true);
+      setTimeout(() => bot.setControlState('jump', false), 350);
+    });
+
+    socket.on('equip_slot', async data => {
+      const item = bot.inventory.slots[data.slot];
+      if (item) {
+        try { await bot.equip(item, 'hand'); } catch (e) {}
       }
     });
 
-    socket.on('manual_action', (action) => {
-      if (action.type === 'move') {
-        if (action.dir === 'jump') {
-          bot.setControlState('jump', true);
-          setTimeout(() => bot.setControlState('jump', false), 350);
+    socket.on('drop_slot', async data => {
+      const item = bot.inventory.slots[data.slot];
+      if (item) {
+        try { await bot.tossStack(item); } catch (e) {}
+      }
+    });
+
+    socket.on('manual_action', async type => {
+      if (type === 'attack') {
+        const target = bot.nearestEntity(e => 
+          (e.type === 'mob' || e.type === 'player') && bot.entity.position.distanceTo(e.position) <= 4.5
+        );
+        if (target) {
+          await equipBestWeapon(bot);
+          await bot.lookAt(target.position.offset(0, target.height ? target.height * 0.75 : 1, 0));
+          bot.attack(target);
         } else {
-          bot.setControlState(action.dir, true);
-          setTimeout(() => bot.setControlState(action.dir, false), 400);
+          bot.swingArm();
+        }
+      } else if (type === 'mine') {
+        const targetBlock = bot.blockAtCursor(4.5);
+        if (targetBlock && targetBlock.name !== 'air') {
+          await equipBestTool(bot, targetBlock);
+          try { await bot.dig(targetBlock); } catch (e) {}
+        }
+      } else if (type === 'place') {
+        const refBlock = bot.blockAtCursor(4.5);
+        if (refBlock && refBlock.name !== 'air') {
+          try { await bot.placeBlock(refBlock, new Vec3(0, 1, 0)); } catch (e) {}
         }
       }
     });
+
+    socket.on('send_chat', async data => {
+      if (data && data.message) {
+        const msg = data.message.trim();
+        if (msg.startsWith('craft ')) {
+          const parts = msg.split(' ');
+          smartGatherAndCraft(bot, parts[1], parseInt(parts[2], 10) || 1);
+        } else if (msg.startsWith('!')) {
+          bot.chat(msg);
+        } else {
+          const reply = await askAiBrain(msg, { hp: bot.health, food: bot.food });
+          bot.chat(reply);
+        }
+      }
+    });
+
+    socket.on('disconnect', () => {
+      bot.clearControlStates();
+    });
   });
+
+  function syncState() {
+    const items = bot.inventory.slots.map((item, index) => 
+      item ? { slot: index, name: item.name, count: item.count } : null
+    ).filter(Boolean);
+    io.emit('sync', { hp: bot.health, food: bot.food, items });
+  }
+
+  // Active Radar Tick (De-duplicated Ore & Entity Classifier)
+  setInterval(() => {
+    if (!bot.entity) return;
+    const nearby = [];
+    const mcData = require('minecraft-data')(bot.version);
+
+    // 1. Scan Players & Mobs
+    for (const id in bot.entities) {
+      const e = bot.entities[id];
+      if (!e || e === bot.entity) continue;
+      if (e.type === 'player' || e.type === 'mob') {
+        if (bot.entity.position.distanceTo(e.position) <= 24) {
+          nearby.push({
+            name: e.username || e.name || e.type,
+            type: e.type,
+            x: e.position.x,
+            y: e.position.y,
+            z: e.position.z
+          });
+        }
+      }
+    }
+
+    // 2. Scan Containers
+    if (mcData) {
+      const containerIds = [
+        mcData.blocksByName.chest?.id,
+        mcData.blocksByName.trapped_chest?.id,
+        mcData.blocksByName.barrel?.id
+      ].filter(Boolean);
+
+      const foundChests = bot.findBlocks({ matching: containerIds, maxDistance: 16, count: 8 });
+      const addedChests = [];
+
+      foundChests.forEach(pos => {
+        const isCloseToExisting = addedChests.some(cPos => cPos.distanceTo(pos) < 2);
+        if (!isCloseToExisting) {
+          addedChests.push(pos);
+          nearby.push({ name: 'Chest', type: 'chest', x: pos.x, y: pos.y, z: pos.z });
+        }
+      });
+
+      // 3. Scan Specific Ores with Clustering Logic
+      const oreList = [
+        { key: 'diamond', name: 'Diamond Ore', ids: [mcData.blocksByName.diamond_ore?.id, mcData.blocksByName.deepslate_diamond_ore?.id] },
+        { key: 'debris', name: 'Ancient Debris', ids: [mcData.blocksByName.ancient_debris?.id] },
+        { key: 'gold', name: 'Gold Ore', ids: [mcData.blocksByName.gold_ore?.id, mcData.blocksByName.deepslate_gold_ore?.id, mcData.blocksByName.nether_gold_ore?.id] },
+        { key: 'iron', name: 'Iron Ore', ids: [mcData.blocksByName.iron_ore?.id, mcData.blocksByName.deepslate_iron_ore?.id] },
+        { key: 'copper', name: 'Copper Ore', ids: [mcData.blocksByName.copper_ore?.id, mcData.blocksByName.deepslate_copper_ore?.id] },
+        { key: 'lapis', name: 'Lapis Ore', ids: [mcData.blocksByName.lapis_ore?.id, mcData.blocksByName.deepslate_lapis_ore?.id] },
+        { key: 'coal', name: 'Coal Ore', ids: [mcData.blocksByName.coal_ore?.id, mcData.blocksByName.deepslate_coal_ore?.id] }
+      ];
+
+      oreList.forEach(oreGroup => {
+        const validIds = oreGroup.ids.filter(Boolean);
+        if (validIds.length > 0) {
+          const blocks = bot.findBlocks({ matching: validIds, maxDistance: 16, count: 12 });
+          const trackedVeins = [];
+
+          blocks.forEach(pos => {
+            const isNearVein = trackedVeins.some(vPos => vPos.distanceTo(pos) < 2.5);
+            if (!isNearVein) {
+              trackedVeins.push(pos);
+              nearby.push({
+                name: oreGroup.name,
+                type: oreGroup.key,
+                x: pos.x,
+                y: pos.y,
+                z: pos.z
+              });
+            }
+          });
+        }
+      });
+    }
+
+    io.emit('radar', {
+      bot: { x: bot.entity.position.x, y: bot.entity.position.y, z: bot.entity.position.z },
+      entities: nearby
+    });
+  }, 400);
 
   bot.inventory.on('updateSlot', () => syncState());
   bot.on('health', () => syncState());
-
-  server.listen(port, () => {
-    console.log(`[OPERATIONS SERVER ACTIVE] Port: ${port}`);
-  });
-}
-/**
- * ============================================================================
- * MODULE: AUTONOMOUS NETHERITE PROGRESSION PIPELINE (PART 3)
- * FULL AUTONOMOUS FRAME BUILDER + STAIR-STEP Y:14 MINER + LAVA CLUTCH
- * ============================================================================
- */
-
-async function startNetheritePipeline(bot) {
-  if (botState.netherMission.active) {
-    return safeChat(bot, "Mission already chal raha hai boss!");
-  }
-
-  const obsidianCount = bot.inventory.items()
-    .filter(i => i.name === 'obsidian')
-    .reduce((acc, cur) => acc + cur.count, 0);
-
-  const hasFlint = bot.inventory.items().some(i => i.name === 'flint_and_steel');
-  const pickaxe = bot.inventory.items().find(i => i.name.includes('diamond_pickaxe') || i.name.includes('netherite_pickaxe'));
-
-  if (obsidianCount < 10) {
-    return safeChat(bot, `❌ Cancelled: Kam se kam 10 Obsidian chahiye (Mere paas ${obsidianCount} hai).`);
-  }
-  if (!hasFlint) {
-    return safeChat(bot, "❌ Cancelled: Flint and Steel missing hai!");
-  }
-  if (!pickaxe) {
-    return safeChat(bot, "❌ Cancelled: Ancient Debris todne ke liye Diamond ya Netherite Pickaxe chahiye!");
-  }
-
-  botState.netherMission.active = true;
-  botState.netherMission.stage = 'PORTAL_BUILD';
-  botState.netherMission.debrisGathered = 0;
-  botState.netherMission.homeCoords = bot.entity.position.clone();
-
-  safeChat(bot, "🟢 Protocol: Netherite Pipeline Active. 4x5 Portal frame banana shuru kar raha hoon...");
-  await buildAndIgnitePortal(bot);
-}
-
-async function buildAndIgnitePortal(bot) {
-  try {
-    const obsidian = bot.inventory.items().find(i => i.name === 'obsidian');
-    if (!obsidian) throw new Error("Obsidian missing!");
-
-    // Base placement anchor in front of the bot
-    const base = bot.entity.position.floored().offset(2, 0, 0);
-    botState.netherMission.portalCoords = base;
-
-    // 4x5 Vertical Portal Frame Coordinates (Minimal 10 Obsidian)
-    const frameOffsets = [
-      // Bottom Row (2 blocks)
-      new Vec3(1, 0, 0), new Vec3(2, 0, 0),
-      // Left Column (3 blocks)
-      new Vec3(0, 1, 0), new Vec3(0, 2, 0), new Vec3(0, 3, 0),
-      // Right Column (3 blocks)
-      new Vec3(3, 1, 0), new Vec3(3, 2, 0), new Vec3(3, 3, 0),
-      // Top Row (2 blocks)
-      new Vec3(1, 4, 0), new Vec3(2, 4, 0)
-    ];
-
-    for (const offset of frameOffsets) {
-      const targetPos = base.plus(offset);
-      const current = bot.blockAt(targetPos);
-
-      if (current && current.name !== 'obsidian') {
-        if (bot.entity.position.distanceTo(targetPos) > 4) {
-          await bot.pathfinder.goto(new goals.GoalNear(targetPos.x, targetPos.y, targetPos.z, 3)).catch(() => {});
-        }
-
-        await bot.equip(obsidian, 'hand');
-
-        const neighbors = [
-          targetPos.offset(0, -1, 0),
-          targetPos.offset(1, 0, 0),
-          targetPos.offset(-1, 0, 0),
-          targetPos.offset(0, 1, 0)
-        ];
-
-        for (const nPos of neighbors) {
-          const neighborBlock = bot.blockAt(nPos);
-          if (neighborBlock && neighborBlock.name !== 'air') {
-            await bot.lookAt(targetPos);
-            await bot.placeBlock(neighborBlock, targetPos.minus(nPos)).catch(() => {});
-            await bot.waitForTicks(4);
-            break;
-          }
-        }
-      }
-    }
-
-    // Step 2: Reliable Ignition using placeBlock on the top face
-    const flint = bot.inventory.items().find(i => i.name === 'flint_and_steel');
-    if (flint) {
-      await bot.equip(flint, 'hand');
-      const bottomPortalBlock = bot.blockAt(base.offset(1, 0, 0));
-      if (bottomPortalBlock) {
-        await bot.lookAt(bottomPortalBlock.position);
-        await bot.placeBlock(bottomPortalBlock, new Vec3(0, 1, 0)).catch(() => {});
-        await bot.waitForTicks(10);
-      }
-    }
-
-    safeChat(bot, "🔥 Portal ignite ho gaya! Entering portal frame...");
-    bot.pathfinder.setGoal(new goals.GoalBlock(base.x + 1, base.y + 1, base.z));
-
-  } catch (err) {
-    safeChat(bot, `❌ Portal build error: ${err.message}`);
-    botState.netherMission.active = false;
-    botState.netherMission.stage = 'IDLE';
-  }
-}
-
-async function executeNetherMining(bot) {
-  botState.netherMission.stage = 'NETHER_MINING';
-  safeChat(bot, "⛏️ Nether pahunch gaya! Y:14 Ancient Debris safe search shuru...");
-
-  const diamondPick = bot.inventory.items().find(i => i.name.includes('pickaxe'));
-  if (diamondPick) await bot.equip(diamondPick, 'hand');
-
-  const miningInterval = setInterval(async () => {
-    if (botState.netherMission.stage !== 'NETHER_MINING') {
-      return clearInterval(miningInterval);
-    }
-
-    const curPos = bot.entity.position.floored();
-
-    // 1. Safe Staircase Downward to Y:14
-    if (curPos.y > 14) {
-      const stepDownBlock = bot.blockAt(curPos.offset(1, -1, 0));
-      const headBlock = bot.blockAt(curPos.offset(1, 0, 0));
-
-      if (headBlock && headBlock.name !== 'air' && !HAZARD_BLOCKS.includes(headBlock.name)) {
-        await bot.dig(headBlock).catch(() => {});
-      }
-      if (stepDownBlock && stepDownBlock.name !== 'air' && !HAZARD_BLOCKS.includes(stepDownBlock.name)) {
-        await bot.dig(stepDownBlock).catch(() => {});
-      }
-      bot.setControlState('forward', true);
-      setTimeout(() => bot.setControlState('forward', false), 400);
-      return;
-    }
-
-    // 2. Scan Front Raycast for 26.2 Hazards (Sulfur Cubes, Lava, Magma)
-    const front1 = bot.blockAt(curPos.offset(1, 0, 0));
-    const front2 = bot.blockAt(curPos.offset(1, 1, 0));
-
-    const hazardFound = (front1 && HAZARD_BLOCKS.includes(front1.name)) || 
-                        (front2 && HAZARD_BLOCKS.includes(front2.name));
-
-    if (hazardFound) {
-      const hName = front1?.name || front2?.name;
-      safeChat(bot, `⚠️ Danger! Hazard (${hName}) saamne hai. Clutch-sealing...`);
-      const sealMat = bot.inventory.items().find(i => 
-        i.name.includes('cobble') || i.name.includes('netherrack') || i.name.includes('stone')
-      );
-      if (sealMat) {
-        await bot.equip(sealMat, 'hand');
-        await bot.placeBlock(bot.blockAt(curPos), new Vec3(1, 0, 0)).catch(() => {});
-      }
-      // Turn 90 degrees to bypass hazard wall
-      await bot.look(bot.entity.yaw + Math.PI / 2, 0);
-      return;
-    }
-
-    // 3. Scan for Ancient Debris in 16-block radius
-    const debris = bot.findBlock({
-      matching: bot.registry.blocksByName.ancient_debris?.id,
-      maxDistance: 16
-    });
-
-    if (debris) {
-      safeChat(bot, "💎 Ancient Debris spot hui! Tod raha hoon...");
-      try {
-        await equipBestTool(bot, debris);
-        await bot.collectBlock.collect(debris);
-        botState.netherMission.debrisGathered += 1;
-        safeChat(bot, `📦 Ancient Debris progress: ${botState.netherMission.debrisGathered}/${botState.netherMission.targetDebris}`);
-
-        if (botState.netherMission.debrisGathered >= botState.netherMission.targetDebris) {
-          clearInterval(miningInterval);
-          botState.netherMission.stage = 'SMELT_AND_UPGRADE';
-          safeChat(bot, "✅ Target pure ho gaye! Wapas portal par chal raha hoon...");
-
-          if (botState.netherMission.portalCoords) {
-            bot.pathfinder.setGoal(new goals.GoalNear(
-              botState.netherMission.portalCoords.x,
-              botState.netherMission.portalCoords.y,
-              botState.netherMission.portalCoords.z,
-              2
-            ));
-          }
-        }
-      } catch (err) {
-        console.error("[DEBRIS HARVEST ERROR]", err.message);
-      }
-      return;
-    }
-
-    // 4. Default Tunneling Forward at Y:14
-    if (front1 && front1.name !== 'air') await bot.dig(front1).catch(() => {});
-    if (front2 && front2.name !== 'air') await bot.dig(front2).catch(() => {});
-    bot.setControlState('forward', true);
-    setTimeout(() => bot.setControlState('forward', false), 350);
-
-  }, 1800);
+  server.listen(port, () => console.log(`[OPERATIONS SERVER ACTIVE] Port: ${port}`));
 }
 
 /**
@@ -1298,8 +1656,6 @@ async function executeNetherMining(bot) {
  * ============================================================================
  */
 if (require.main === module) {
-  let webServerStarted = false;
-
   function launchBot() {
     const HOST_ENDPOINT = process.argv[2] || 'DG_LAND502.aternos.me';
     const PORT_ENDPOINT = parseInt(process.argv[3], 10) || 62974;
@@ -1314,28 +1670,23 @@ if (require.main === module) {
       version: false
     });
 
-    // RENDER FIX: Launch Web UI immediately so Render binds port before 30s timeout
-    if (!webServerStarted) {
-      try {
-        webInventoryPlugin(bot, { port: WEB_PORT });
-        webServerStarted = true;
-      } catch (e) {
-        console.error('[DASHBOARD ERROR]', e.message);
-      }
-    }
-
     bot.loadPlugin(pathfinder);
     bot.loadPlugin(collectBlock);
     bot.loadPlugin(autoEat);
 
     bot.once('spawn', () => {
       console.log(`[AGENT LIVE] ${bot.username} entered the server.`);
+      try {
+        webInventoryPlugin(bot, { port: WEB_PORT });
+      } catch (e) {
+        console.error('[DASHBOARD ERROR]', e.message);
+      }
 
       const mcData = require('minecraft-data')(bot.version);
       const defaultMove = new Movements(bot, mcData);
-      defaultMove.allowParkour = false;
+      defaultMove.allowParkour = true;
       defaultMove.canDig = true;
-      defaultMove.allow1by1towers = false;
+      defaultMove.allow1by1towers = true;
 
       bot.pathfinder.setMovements(defaultMove);
       bot.autoEat.options = {
@@ -1344,22 +1695,8 @@ if (require.main === module) {
         bannedFood: ['rotten_flesh', 'spider_eye', 'poisonous_potato']
       };
 
+      // Start Automatic Mob Defense immediately
       startMobDefense(bot);
-    });
-
-    // Dimension Transition & Respawn Handler
-    bot.on('respawn', () => {
-      const dimension = bot.game.dimension;
-      console.log(`[DIMENSION SHIFT] Transitioned to: ${dimension}`);
-
-      if (dimension === 'minecraft:the_nether' && botState.netherMission.stage === 'PORTAL_BUILD') {
-        safeChat(bot, "🔥 Nether me safely pahunch gaya! Y:14 tunneling shuru.");
-        executeNetherMining(bot);
-      } else if (dimension === 'minecraft:overworld' && botState.netherMission.stage === 'SMELT_AND_UPGRADE') {
-        safeChat(bot, "🏡 Overworld safe return complete! Mission accomplished.");
-        botState.netherMission.active = false;
-        botState.netherMission.stage = 'IDLE';
-      }
     });
 
     bot.on('physicsTick', () => {
@@ -1370,7 +1707,7 @@ if (require.main === module) {
       }
     });
 
-    // Discord Synchronization Listener
+    // Discord Synchronization
     discordClient.on('messageCreate', async (msg) => {
       if (msg.author.bot || (DISCORD_CHANNEL_ID && msg.channel.id !== DISCORD_CHANNEL_ID)) return;
       const content = msg.content.trim();
@@ -1384,351 +1721,19 @@ if (require.main === module) {
         sortAndCleanInventory(bot);
         return msg.reply('🎒 Inventory sorted and trash filtered!');
       }
-      if (content.startsWith('!netherite')) {
-        startNetheritePipeline(bot);
-        return msg.reply('🔥 Netherite Autonomous Pipeline Initiated!');
-      }
       if (content.startsWith('!ai ')) {
         const reply = await askAiBrain(content.slice(4), { hp: bot.health, food: bot.food });
-        safeChat(bot, reply);
+        bot.chat(reply);
         return msg.reply(`🤖 **AI:** ${reply}`);
       }
       if (content === '!status') {
-        return msg.reply(
-          `📊 HP: ${Math.round(bot.health)}/20 | Auto-Defense: ${botState.guardMode ? 'ON' : 'OFF'} | Smelter: ${botState.autoSmelt ? 'ON' : 'OFF'} | Nether Mission: ${botState.netherMission.stage}`
-        );
+        return msg.reply(`📊 HP: ${Math.round(bot.health)}/20 | Auto-Defense: ${botState.guardMode ? 'ON' : 'OFF'} | Smelter: ${botState.autoSmelt ? 'ON' : 'OFF'}`);
       }
       if (content.startsWith('!say ')) {
-        safeChat(bot, content.slice(5));
+        bot.chat(content.slice(5));
         return msg.react('💬');
       }
     });
-/**
- * ============================================================================
- * MODULE: AUTONOMOUS NETHERITE PROGRESSION PIPELINE (PART 3)
- * FULL AUTONOMOUS FRAME BUILDER + STAIR-STEP Y:14 MINER + LAVA CLUTCH
- * ============================================================================
- */
-
-async function startNetheritePipeline(bot) {
-  if (botState.netherMission.active) {
-    return safeChat(bot, "Mission already chal raha hai boss!");
-  }
-
-  const obsidianCount = bot.inventory.items()
-    .filter(i => i.name === 'obsidian')
-    .reduce((acc, cur) => acc + cur.count, 0);
-
-  const hasFlint = bot.inventory.items().some(i => i.name === 'flint_and_steel');
-  const pickaxe = bot.inventory.items().find(i => i.name.includes('diamond_pickaxe') || i.name.includes('netherite_pickaxe'));
-
-  if (obsidianCount < 10) {
-    return safeChat(bot, `❌ Cancelled: Kam se kam 10 Obsidian chahiye (Mere paas ${obsidianCount} hai).`);
-  }
-  if (!hasFlint) {
-    return safeChat(bot, "❌ Cancelled: Flint and Steel missing hai!");
-  }
-  if (!pickaxe) {
-    return safeChat(bot, "❌ Cancelled: Ancient Debris todne ke liye Diamond ya Netherite Pickaxe chahiye!");
-  }
-
-  botState.netherMission.active = true;
-  botState.netherMission.stage = 'PORTAL_BUILD';
-  botState.netherMission.debrisGathered = 0;
-  botState.netherMission.homeCoords = bot.entity.position.clone();
-
-  safeChat(bot, "🟢 Protocol: Netherite Pipeline Active. 4x5 Portal frame banana shuru kar raha hoon...");
-  await buildAndIgnitePortal(bot);
-}
-
-async function buildAndIgnitePortal(bot) {
-  try {
-    const obsidian = bot.inventory.items().find(i => i.name === 'obsidian');
-    if (!obsidian) throw new Error("Obsidian missing!");
-
-    // Base placement anchor in front of the bot
-    const base = bot.entity.position.floored().offset(2, 0, 0);
-    botState.netherMission.portalCoords = base;
-
-    // 4x5 Vertical Portal Frame Coordinates (Minimal 10 Obsidian)
-    const frameOffsets = [
-      // Bottom Row (2 blocks)
-      new Vec3(1, 0, 0), new Vec3(2, 0, 0),
-      // Left Column (3 blocks)
-      new Vec3(0, 1, 0), new Vec3(0, 2, 0), new Vec3(0, 3, 0),
-      // Right Column (3 blocks)
-      new Vec3(3, 1, 0), new Vec3(3, 2, 0), new Vec3(3, 3, 0),
-      // Top Row (2 blocks)
-      new Vec3(1, 4, 0), new Vec3(2, 4, 0)
-    ];
-
-    for (const offset of frameOffsets) {
-      const targetPos = base.plus(offset);
-      const current = bot.blockAt(targetPos);
-
-      if (current && current.name !== 'obsidian') {
-        if (bot.entity.position.distanceTo(targetPos) > 4) {
-          await bot.pathfinder.goto(new goals.GoalNear(targetPos.x, targetPos.y, targetPos.z, 3)).catch(() => {});
-        }
-
-        await bot.equip(obsidian, 'hand');
-
-        const neighbors = [
-          targetPos.offset(0, -1, 0),
-          targetPos.offset(1, 0, 0),
-          targetPos.offset(-1, 0, 0),
-          targetPos.offset(0, 1, 0)
-        ];
-
-        for (const nPos of neighbors) {
-          const neighborBlock = bot.blockAt(nPos);
-          if (neighborBlock && neighborBlock.name !== 'air') {
-            await bot.lookAt(targetPos);
-            await bot.placeBlock(neighborBlock, targetPos.minus(nPos)).catch(() => {});
-            await bot.waitForTicks(4);
-            break;
-          }
-        }
-      }
-    }
-
-    // Reliable Ignition using placeBlock on top face
-    const flint = bot.inventory.items().find(i => i.name === 'flint_and_steel');
-    if (flint) {
-      await bot.equip(flint, 'hand');
-      const bottomPortalBlock = bot.blockAt(base.offset(1, 0, 0));
-      if (bottomPortalBlock) {
-        await bot.lookAt(bottomPortalBlock.position);
-        await bot.placeBlock(bottomPortalBlock, new Vec3(0, 1, 0)).catch(() => {});
-        await bot.waitForTicks(10);
-      }
-    }
-
-    safeChat(bot, "🔥 Portal ignite ho gaya! Entering portal frame...");
-    bot.pathfinder.setGoal(new goals.GoalBlock(base.x + 1, base.y + 1, base.z));
-
-  } catch (err) {
-    safeChat(bot, `❌ Portal build error: ${err.message}`);
-    botState.netherMission.active = false;
-    botState.netherMission.stage = 'IDLE';
-  }
-}
-
-async function executeNetherMining(bot) {
-  botState.netherMission.stage = 'NETHER_MINING';
-  safeChat(bot, "⛏️ Nether pahunch gaya! Y:14 Ancient Debris safe search shuru...");
-
-  const diamondPick = bot.inventory.items().find(i => i.name.includes('pickaxe'));
-  if (diamondPick) await bot.equip(diamondPick, 'hand');
-
-  const miningInterval = setInterval(async () => {
-    if (botState.netherMission.stage !== 'NETHER_MINING') {
-      return clearInterval(miningInterval);
-    }
-
-    const curPos = bot.entity.position.floored();
-
-    // 1. Safe Staircase Downward to Y:14
-    if (curPos.y > 14) {
-      const stepDownBlock = bot.blockAt(curPos.offset(1, -1, 0));
-      const headBlock = bot.blockAt(curPos.offset(1, 0, 0));
-
-      if (headBlock && headBlock.name !== 'air' && !HAZARD_BLOCKS.includes(headBlock.name)) {
-        await bot.dig(headBlock).catch(() => {});
-      }
-      if (stepDownBlock && stepDownBlock.name !== 'air' && !HAZARD_BLOCKS.includes(stepDownBlock.name)) {
-        await bot.dig(stepDownBlock).catch(() => {});
-      }
-      bot.setControlState('forward', true);
-      setTimeout(() => bot.setControlState('forward', false), 400);
-      return;
-    }
-
-    // 2. Scan Front Raycast for Hazards (Lava, Magma, Sulfur Cubes)
-    const front1 = bot.blockAt(curPos.offset(1, 0, 0));
-    const front2 = bot.blockAt(curPos.offset(1, 1, 0));
-
-    const hazardFound = (front1 && HAZARD_BLOCKS.includes(front1.name)) || 
-                        (front2 && HAZARD_BLOCKS.includes(front2.name));
-
-    if (hazardFound) {
-      const hName = front1?.name || front2?.name;
-      safeChat(bot, `⚠️ Danger! Hazard (${hName}) saamne hai. Clutch-sealing...`);
-      const sealMat = bot.inventory.items().find(i => 
-        i.name.includes('cobble') || i.name.includes('netherrack') || i.name.includes('stone')
-      );
-      if (sealMat) {
-        await bot.equip(sealMat, 'hand');
-        await bot.placeBlock(bot.blockAt(curPos), new Vec3(1, 0, 0)).catch(() => {});
-      }
-      // Turn 90 degrees to bypass hazard wall
-      await bot.look(bot.entity.yaw + Math.PI / 2, 0);
-      return;
-    }
-
-    // 3. Scan for Ancient Debris in 16-block radius
-    const debris = bot.findBlock({
-      matching: bot.registry.blocksByName.ancient_debris?.id,
-      maxDistance: 16
-    });
-
-    if (debris) {
-      safeChat(bot, "💎 Ancient Debris spot hui! Tod raha hoon...");
-      try {
-        await equipBestTool(bot, debris);
-        await bot.collectBlock.collect(debris);
-        botState.netherMission.debrisGathered += 1;
-        safeChat(bot, `📦 Ancient Debris progress: ${botState.netherMission.debrisGathered}/${botState.netherMission.targetDebris}`);
-
-        if (botState.netherMission.debrisGathered >= botState.netherMission.targetDebris) {
-          clearInterval(miningInterval);
-          botState.netherMission.stage = 'SMELT_AND_UPGRADE';
-          safeChat(bot, "✅ Target pure ho gaye! Wapas portal par chal raha hoon...");
-
-          if (botState.netherMission.portalCoords) {
-            bot.pathfinder.setGoal(new goals.GoalNear(
-              botState.netherMission.portalCoords.x,
-              botState.netherMission.portalCoords.y,
-              botState.netherMission.portalCoords.z,
-              2
-            ));
-          }
-        }
-      } catch (err) {
-        console.error("[DEBRIS HARVEST ERROR]", err.message);
-      }
-      return;
-    }
-
-    // 4. Tunneling Forward at Y:14
-    if (front1 && front1.name !== 'air') await bot.dig(front1).catch(() => {});
-    if (front2 && front2.name !== 'air') await bot.dig(front2).catch(() => {});
-    bot.setControlState('forward', true);
-    setTimeout(() => bot.setControlState('forward', false), 350);
-
-  }, 1800);
-}
-
-/**
- * ============================================================================
- * MAIN DAEMON INITIALIZER & EVENT LOOP
- * ============================================================================
- */
-let activeBot = null;
-let discordListenerAttached = false;
-let webServerStarted = false;
-
-if (require.main === module) {
-  function launchBot() {
-    const HOST_ENDPOINT = process.argv[2] || 'DG_LAND502.aternos.me';
-    const PORT_ENDPOINT = parseInt(process.argv[3], 10) || 62974;
-    const BOT_IDENTITY = process.argv[4] || 'Nokar';
-    const WEB_PORT = process.env.PORT || 3000;
-
-    const bot = mineflayer.createBot({
-      host: HOST_ENDPOINT,
-      port: PORT_ENDPOINT,
-      username: BOT_IDENTITY,
-      checkTimeoutInterval: 120000,
-      version: false
-    });
-
-    activeBot = bot;
-
-    // Bind Port instantly so Render does not fail with port scan timeout
-    if (!webServerStarted) {
-      try {
-        webInventoryPlugin(bot, { port: WEB_PORT });
-        webServerStarted = true;
-      } catch (e) {
-        console.error('[DASHBOARD ERROR]', e.message);
-      }
-    }
-
-    bot.loadPlugin(pathfinder);
-    bot.loadPlugin(collectBlock);
-    bot.loadPlugin(autoEat);
-
-    bot.once('spawn', () => {
-      console.log(`[AGENT LIVE] ${bot.username} entered the server.`);
-
-      const mcData = require('minecraft-data')(bot.version);
-      const defaultMove = new Movements(bot, mcData);
-      defaultMove.allowParkour = false;
-      defaultMove.canDig = true;
-      defaultMove.allow1by1towers = false;
-
-      bot.pathfinder.setMovements(defaultMove);
-      bot.autoEat.options = {
-        priority: 'foodPoints',
-        startAt: 14,
-        bannedFood: ['rotten_flesh', 'spider_eye', 'poisonous_potato']
-      };
-
-      startMobDefense(bot);
-    });
-
-    // Dimension Transition & Respawn Handler
-    bot.on('respawn', () => {
-      const dimension = bot.game.dimension;
-      console.log(`[DIMENSION SHIFT] Transitioned to: ${dimension}`);
-
-      if (dimension === 'minecraft:the_nether' && botState.netherMission.stage === 'PORTAL_BUILD') {
-        safeChat(bot, "🔥 Nether me safely pahunch gaya! Y:14 tunneling shuru.");
-        executeNetherMining(bot);
-      } else if (dimension === 'minecraft:overworld' && botState.netherMission.stage === 'SMELT_AND_UPGRADE') {
-        safeChat(bot, "🏡 Overworld safe return complete! Mission accomplished.");
-        botState.netherMission.active = false;
-        botState.netherMission.stage = 'IDLE';
-      }
-    });
-
-    bot.on('physicsTick', () => {
-      if (!botState.followingPlayer || botState.isBusyCrafting) return;
-      const target = bot.players[botState.followingPlayer]?.entity;
-      if (target) {
-        bot.pathfinder.setGoal(new goals.GoalFollow(target, 2), true);
-      }
-    });
-
-    // Discord message listener attached only once (prevents memory leak & duplicate replies)
-    if (!discordListenerAttached) {
-      discordListenerAttached = true;
-      discordClient.on('messageCreate', async (msg) => {
-        if (msg.author.bot || (DISCORD_CHANNEL_ID && msg.channel.id !== DISCORD_CHANNEL_ID)) return;
-        if (!activeBot) return;
-
-        const content = msg.content.trim();
-
-        if (content.startsWith('!craft ')) {
-          const parts = content.split(' ');
-          smartGatherAndCraft(activeBot, parts[1], parseInt(parts[2], 10) || 1);
-          return msg.reply(`🔨 Crafting routine started for ${parts[1]}`);
-        }
-        if (content.startsWith('!sort')) {
-          sortAndCleanInventory(activeBot);
-          return msg.reply('🎒 Inventory sorted and trash filtered!');
-        }
-        if (content.startsWith('!netherite')) {
-          startNetheritePipeline(activeBot);
-          return msg.reply('🔥 Netherite Autonomous Pipeline Initiated!');
-        }
-        if (content.startsWith('!ai ')) {
-          const reply = await askAiBrain(content.slice(4), { hp: activeBot.health, food: activeBot.food });
-          safeChat(activeBot, reply);
-          return msg.reply(`🤖 **AI:** ${reply}`);
-        }
-        if (content === '!status') {
-          return msg.reply(
-            `📊 HP: ${Math.round(activeBot.health || 20)}/20 | Auto-Defense: ${botState.guardMode ? 'ON' : 'OFF'} | Smelter: ${botState.autoSmelt ? 'ON' : 'OFF'} | Nether Mission: ${botState.netherMission.stage}`
-          );
-        }
-        if (content.startsWith('!say ')) {
-          safeChat(activeBot, content.slice(5));
-          return msg.react('💬');
-        }
-      });
-    }
 
     // Universal In-Game Chat Listener
     bot.on('messagestr', async (message) => {
@@ -1741,6 +1746,7 @@ if (require.main === module) {
       const cleanMsg = message.trim();
       const lower = cleanMsg.toLowerCase();
 
+      // Extract command text
       const match = cleanMsg.match(/(?:<[^>]+>\s*|\[[^\]]+\]\s*|\w+:\s*)?(.*)/);
       const actualText = match ? match[1].trim() : cleanMsg;
       const args = actualText.split(/\s+/);
@@ -1750,8 +1756,9 @@ if (require.main === module) {
         stopAntiAfk(bot);
         const sender = actualText.split(' ')[0] || '';
         botState.followingPlayer = sender;
-        safeChat(bot, "Aapke paas aa raha hoon!");
-      } else if (cmd === 'stop') {
+        bot.chat("Aapke paas aa raha hoon!");
+      }
+      else if (cmd === 'stop') {
         botState.followingPlayer = null;
         botState.isBusyCrafting = false;
         botState.autoSmelt = false;
@@ -1760,58 +1767,56 @@ if (require.main === module) {
         stopFishing();
         botState.autoFarm = false;
         clearTimeout(botState.farmingInterval);
-        botState.netherMission.active = false;
-        botState.netherMission.stage = 'IDLE';
 
         bot.clearControlStates();
         bot.pathfinder.stop();
         bot.collectBlock.cancelTask();
-        safeChat(bot, "Sab stop kar diya!");
-      } else if (cmd === 'netherite') {
-        startNetheritePipeline(bot);
-      } else if (cmd === 'craft' && args[1]) {
+        bot.chat("Sab stop kar diya!");
+      }
+      else if (cmd === 'craft' && args[1]) {
         const count = parseInt(args[2], 10) || 1;
         smartGatherAndCraft(bot, args[1].toLowerCase(), count);
-      } else if (cmd === 'sort') {
+      }
+      else if (cmd === 'sort') {
         sortAndCleanInventory(bot);
-      } else if (cmd === 'smelt') {
+      }
+      else if (cmd === 'smelt') {
         botState.autoSmelt = !botState.autoSmelt;
         if (botState.autoSmelt) runAutoSmelter(bot);
         else clearTimeout(botState.smeltingInterval);
-        safeChat(bot, `🔥 Auto Smelter: ${botState.autoSmelt ? 'ON' : 'OFF'}`);
-      } else if (cmd === 'guard' || cmd === 'defense') {
+        bot.chat(`🔥 Auto Smelter: ${botState.autoSmelt ? 'ON' : 'OFF'}`);
+      }
+      else if (cmd === 'guard' || cmd === 'defense') {
         botState.guardMode = !botState.guardMode;
         if (botState.guardMode) {
           startMobDefense(bot);
         } else {
           stopMobDefense();
         }
-        safeChat(bot, `🛡️ Auto Mob Defense: ${botState.guardMode ? 'ON' : 'OFF'}`);
-      } else if (cmd === 'afk') {
-        if (botState.antiAfk) {
-          stopAntiAfk(bot);
-        } else {
-          startAntiAfk(bot);
-        }
-      } else if (cmd === 'fish') {
-        if (botState.isFishing) {
-          stopFishing();
-        } else {
-          startFishing(bot);
-        }
-      } else if (cmd === 'farm') {
+        bot.chat(`🛡️ Auto Mob Defense: ${botState.guardMode ? 'ON' : 'OFF'}`);
+      }
+      else if (cmd === 'afk') {
+        botState.antiAfk ? stopAntiAfk(bot) : startAntiAfk(bot);
+      }
+      else if (cmd === 'fish') {
+        botState.isFishing ? stopFishing() : startFishing(bot);
+      }
+      else if (cmd === 'farm') {
         botState.autoFarm = !botState.autoFarm;
         if (botState.autoFarm) {
           runFarmLoop(bot);
         } else {
           clearTimeout(botState.farmingInterval);
         }
-        safeChat(bot, `🌾 Auto Farm: ${botState.autoFarm ? 'ON' : 'OFF'}`);
-      } else if (cmd === 'deposit' || cmd === 'chest') {
+        bot.chat(`🌾 Auto Farm: ${botState.autoFarm ? 'ON' : 'OFF'}`);
+      }
+      else if (cmd === 'deposit' || cmd === 'chest') {
         dumpToChest(bot);
-      } else if (cmd === 'build' && args[1] === 'house') {
+      }
+      else if (cmd === 'build' && args[1] === 'house') {
         executeHouseBuild(bot);
-      } else if (cmd === 'mine' || cmd === 'collect') {
+      }
+      else if (cmd === 'mine' || cmd === 'collect') {
         let blockQuery = args[1]?.toLowerCase();
         let count = parseInt(args[2], 10) || 1;
         const mcData = require('minecraft-data')(bot.version);
@@ -1821,28 +1826,30 @@ if (require.main === module) {
 
         const found = bot.findBlocks({ matching: targetIds, maxDistance: 32, count });
         if (!found.length) {
-          return safeChat(bot, `Aas-paas ${blockQuery} nahi mila.`);
+          return bot.chat(`Aas-paas ${blockQuery} nahi mila.`);
         }
 
-        safeChat(bot, `${found.length} ${blockQuery} tod raha hoon...`);
+        bot.chat(`${found.length} ${blockQuery} tod raha hoon...`);
         try {
           const targets = found.map(pos => bot.blockAt(pos));
           await equipBestTool(bot, targets[0]);
           await bot.collectBlock.collect(targets);
-          safeChat(bot, "Mining complete!");
+          bot.chat("Mining complete!");
         } catch (e) {
-          safeChat(bot, `Mining Error: ${e.message}`);
+          bot.chat(`Mining Error: ${e.message}`);
         }
-      } else if (cmd === 'dropall') {
+      }
+      else if (cmd === 'dropall') {
         for (const item of bot.inventory.items()) {
           try { await bot.tossStack(item); } catch (e) {}
         }
-        safeChat(bot, "Sari inventory drop kar di!");
-      } else {
+        bot.chat("Sari inventory drop kar di!");
+      }
+      else {
         if (lower.includes('nokar') || lower.includes('bot') || lower.startsWith('!ai')) {
           const prompt = actualText.replace(/^(nokar|bot|!ai)\s*/i, '');
           const reply = await askAiBrain(prompt || "hi", { hp: bot.health, food: bot.food });
-          safeChat(bot, reply);
+          bot.chat(reply);
         }
       }
     });
@@ -1855,7 +1862,7 @@ if (require.main === module) {
     bot.on('error', (err) => {
       console.error('[CRITICAL BOT ERROR]', err.message);
     });
-  } // Closes launchBot()
+  }
 
   launchBot();
-} // Closes if (require.main === module)
+}
