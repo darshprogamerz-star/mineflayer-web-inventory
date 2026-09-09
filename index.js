@@ -1403,6 +1403,332 @@ if (require.main === module) {
         return msg.react('💬');
       }
     });
+/**
+ * ============================================================================
+ * MODULE: AUTONOMOUS NETHERITE PROGRESSION PIPELINE (PART 3)
+ * FULL AUTONOMOUS FRAME BUILDER + STAIR-STEP Y:14 MINER + LAVA CLUTCH
+ * ============================================================================
+ */
+
+async function startNetheritePipeline(bot) {
+  if (botState.netherMission.active) {
+    return safeChat(bot, "Mission already chal raha hai boss!");
+  }
+
+  const obsidianCount = bot.inventory.items()
+    .filter(i => i.name === 'obsidian')
+    .reduce((acc, cur) => acc + cur.count, 0);
+
+  const hasFlint = bot.inventory.items().some(i => i.name === 'flint_and_steel');
+  const pickaxe = bot.inventory.items().find(i => i.name.includes('diamond_pickaxe') || i.name.includes('netherite_pickaxe'));
+
+  if (obsidianCount < 10) {
+    return safeChat(bot, `❌ Cancelled: Kam se kam 10 Obsidian chahiye (Mere paas ${obsidianCount} hai).`);
+  }
+  if (!hasFlint) {
+    return safeChat(bot, "❌ Cancelled: Flint and Steel missing hai!");
+  }
+  if (!pickaxe) {
+    return safeChat(bot, "❌ Cancelled: Ancient Debris todne ke liye Diamond ya Netherite Pickaxe chahiye!");
+  }
+
+  botState.netherMission.active = true;
+  botState.netherMission.stage = 'PORTAL_BUILD';
+  botState.netherMission.debrisGathered = 0;
+  botState.netherMission.homeCoords = bot.entity.position.clone();
+
+  safeChat(bot, "🟢 Protocol: Netherite Pipeline Active. 4x5 Portal frame banana shuru kar raha hoon...");
+  await buildAndIgnitePortal(bot);
+}
+
+async function buildAndIgnitePortal(bot) {
+  try {
+    const obsidian = bot.inventory.items().find(i => i.name === 'obsidian');
+    if (!obsidian) throw new Error("Obsidian missing!");
+
+    // Base placement anchor in front of the bot
+    const base = bot.entity.position.floored().offset(2, 0, 0);
+    botState.netherMission.portalCoords = base;
+
+    // 4x5 Vertical Portal Frame Coordinates (Minimal 10 Obsidian)
+    const frameOffsets = [
+      // Bottom Row (2 blocks)
+      new Vec3(1, 0, 0), new Vec3(2, 0, 0),
+      // Left Column (3 blocks)
+      new Vec3(0, 1, 0), new Vec3(0, 2, 0), new Vec3(0, 3, 0),
+      // Right Column (3 blocks)
+      new Vec3(3, 1, 0), new Vec3(3, 2, 0), new Vec3(3, 3, 0),
+      // Top Row (2 blocks)
+      new Vec3(1, 4, 0), new Vec3(2, 4, 0)
+    ];
+
+    for (const offset of frameOffsets) {
+      const targetPos = base.plus(offset);
+      const current = bot.blockAt(targetPos);
+
+      if (current && current.name !== 'obsidian') {
+        if (bot.entity.position.distanceTo(targetPos) > 4) {
+          await bot.pathfinder.goto(new goals.GoalNear(targetPos.x, targetPos.y, targetPos.z, 3)).catch(() => {});
+        }
+
+        await bot.equip(obsidian, 'hand');
+
+        const neighbors = [
+          targetPos.offset(0, -1, 0),
+          targetPos.offset(1, 0, 0),
+          targetPos.offset(-1, 0, 0),
+          targetPos.offset(0, 1, 0)
+        ];
+
+        for (const nPos of neighbors) {
+          const neighborBlock = bot.blockAt(nPos);
+          if (neighborBlock && neighborBlock.name !== 'air') {
+            await bot.lookAt(targetPos);
+            await bot.placeBlock(neighborBlock, targetPos.minus(nPos)).catch(() => {});
+            await bot.waitForTicks(4);
+            break;
+          }
+        }
+      }
+    }
+
+    // Reliable Ignition using placeBlock on top face
+    const flint = bot.inventory.items().find(i => i.name === 'flint_and_steel');
+    if (flint) {
+      await bot.equip(flint, 'hand');
+      const bottomPortalBlock = bot.blockAt(base.offset(1, 0, 0));
+      if (bottomPortalBlock) {
+        await bot.lookAt(bottomPortalBlock.position);
+        await bot.placeBlock(bottomPortalBlock, new Vec3(0, 1, 0)).catch(() => {});
+        await bot.waitForTicks(10);
+      }
+    }
+
+    safeChat(bot, "🔥 Portal ignite ho gaya! Entering portal frame...");
+    bot.pathfinder.setGoal(new goals.GoalBlock(base.x + 1, base.y + 1, base.z));
+
+  } catch (err) {
+    safeChat(bot, `❌ Portal build error: ${err.message}`);
+    botState.netherMission.active = false;
+    botState.netherMission.stage = 'IDLE';
+  }
+}
+
+async function executeNetherMining(bot) {
+  botState.netherMission.stage = 'NETHER_MINING';
+  safeChat(bot, "⛏️ Nether pahunch gaya! Y:14 Ancient Debris safe search shuru...");
+
+  const diamondPick = bot.inventory.items().find(i => i.name.includes('pickaxe'));
+  if (diamondPick) await bot.equip(diamondPick, 'hand');
+
+  const miningInterval = setInterval(async () => {
+    if (botState.netherMission.stage !== 'NETHER_MINING') {
+      return clearInterval(miningInterval);
+    }
+
+    const curPos = bot.entity.position.floored();
+
+    // 1. Safe Staircase Downward to Y:14
+    if (curPos.y > 14) {
+      const stepDownBlock = bot.blockAt(curPos.offset(1, -1, 0));
+      const headBlock = bot.blockAt(curPos.offset(1, 0, 0));
+
+      if (headBlock && headBlock.name !== 'air' && !HAZARD_BLOCKS.includes(headBlock.name)) {
+        await bot.dig(headBlock).catch(() => {});
+      }
+      if (stepDownBlock && stepDownBlock.name !== 'air' && !HAZARD_BLOCKS.includes(stepDownBlock.name)) {
+        await bot.dig(stepDownBlock).catch(() => {});
+      }
+      bot.setControlState('forward', true);
+      setTimeout(() => bot.setControlState('forward', false), 400);
+      return;
+    }
+
+    // 2. Scan Front Raycast for Hazards (Lava, Magma, Sulfur Cubes)
+    const front1 = bot.blockAt(curPos.offset(1, 0, 0));
+    const front2 = bot.blockAt(curPos.offset(1, 1, 0));
+
+    const hazardFound = (front1 && HAZARD_BLOCKS.includes(front1.name)) || 
+                        (front2 && HAZARD_BLOCKS.includes(front2.name));
+
+    if (hazardFound) {
+      const hName = front1?.name || front2?.name;
+      safeChat(bot, `⚠️ Danger! Hazard (${hName}) saamne hai. Clutch-sealing...`);
+      const sealMat = bot.inventory.items().find(i => 
+        i.name.includes('cobble') || i.name.includes('netherrack') || i.name.includes('stone')
+      );
+      if (sealMat) {
+        await bot.equip(sealMat, 'hand');
+        await bot.placeBlock(bot.blockAt(curPos), new Vec3(1, 0, 0)).catch(() => {});
+      }
+      // Turn 90 degrees to bypass hazard wall
+      await bot.look(bot.entity.yaw + Math.PI / 2, 0);
+      return;
+    }
+
+    // 3. Scan for Ancient Debris in 16-block radius
+    const debris = bot.findBlock({
+      matching: bot.registry.blocksByName.ancient_debris?.id,
+      maxDistance: 16
+    });
+
+    if (debris) {
+      safeChat(bot, "💎 Ancient Debris spot hui! Tod raha hoon...");
+      try {
+        await equipBestTool(bot, debris);
+        await bot.collectBlock.collect(debris);
+        botState.netherMission.debrisGathered += 1;
+        safeChat(bot, `📦 Ancient Debris progress: ${botState.netherMission.debrisGathered}/${botState.netherMission.targetDebris}`);
+
+        if (botState.netherMission.debrisGathered >= botState.netherMission.targetDebris) {
+          clearInterval(miningInterval);
+          botState.netherMission.stage = 'SMELT_AND_UPGRADE';
+          safeChat(bot, "✅ Target pure ho gaye! Wapas portal par chal raha hoon...");
+
+          if (botState.netherMission.portalCoords) {
+            bot.pathfinder.setGoal(new goals.GoalNear(
+              botState.netherMission.portalCoords.x,
+              botState.netherMission.portalCoords.y,
+              botState.netherMission.portalCoords.z,
+              2
+            ));
+          }
+        }
+      } catch (err) {
+        console.error("[DEBRIS HARVEST ERROR]", err.message);
+      }
+      return;
+    }
+
+    // 4. Tunneling Forward at Y:14
+    if (front1 && front1.name !== 'air') await bot.dig(front1).catch(() => {});
+    if (front2 && front2.name !== 'air') await bot.dig(front2).catch(() => {});
+    bot.setControlState('forward', true);
+    setTimeout(() => bot.setControlState('forward', false), 350);
+
+  }, 1800);
+}
+
+/**
+ * ============================================================================
+ * MAIN DAEMON INITIALIZER & EVENT LOOP
+ * ============================================================================
+ */
+let activeBot = null;
+let discordListenerAttached = false;
+let webServerStarted = false;
+
+if (require.main === module) {
+  function launchBot() {
+    const HOST_ENDPOINT = process.argv[2] || 'DG_LAND502.aternos.me';
+    const PORT_ENDPOINT = parseInt(process.argv[3], 10) || 62974;
+    const BOT_IDENTITY = process.argv[4] || 'Nokar';
+    const WEB_PORT = process.env.PORT || 3000;
+
+    const bot = mineflayer.createBot({
+      host: HOST_ENDPOINT,
+      port: PORT_ENDPOINT,
+      username: BOT_IDENTITY,
+      checkTimeoutInterval: 120000,
+      version: false
+    });
+
+    activeBot = bot;
+
+    // Bind Port instantly so Render does not fail with port scan timeout
+    if (!webServerStarted) {
+      try {
+        webInventoryPlugin(bot, { port: WEB_PORT });
+        webServerStarted = true;
+      } catch (e) {
+        console.error('[DASHBOARD ERROR]', e.message);
+      }
+    }
+
+    bot.loadPlugin(pathfinder);
+    bot.loadPlugin(collectBlock);
+    bot.loadPlugin(autoEat);
+
+    bot.once('spawn', () => {
+      console.log(`[AGENT LIVE] ${bot.username} entered the server.`);
+
+      const mcData = require('minecraft-data')(bot.version);
+      const defaultMove = new Movements(bot, mcData);
+      defaultMove.allowParkour = false;
+      defaultMove.canDig = true;
+      defaultMove.allow1by1towers = false;
+
+      bot.pathfinder.setMovements(defaultMove);
+      bot.autoEat.options = {
+        priority: 'foodPoints',
+        startAt: 14,
+        bannedFood: ['rotten_flesh', 'spider_eye', 'poisonous_potato']
+      };
+
+      startMobDefense(bot);
+    });
+
+    // Dimension Transition & Respawn Handler
+    bot.on('respawn', () => {
+      const dimension = bot.game.dimension;
+      console.log(`[DIMENSION SHIFT] Transitioned to: ${dimension}`);
+
+      if (dimension === 'minecraft:the_nether' && botState.netherMission.stage === 'PORTAL_BUILD') {
+        safeChat(bot, "🔥 Nether me safely pahunch gaya! Y:14 tunneling shuru.");
+        executeNetherMining(bot);
+      } else if (dimension === 'minecraft:overworld' && botState.netherMission.stage === 'SMELT_AND_UPGRADE') {
+        safeChat(bot, "🏡 Overworld safe return complete! Mission accomplished.");
+        botState.netherMission.active = false;
+        botState.netherMission.stage = 'IDLE';
+      }
+    });
+
+    bot.on('physicsTick', () => {
+      if (!botState.followingPlayer || botState.isBusyCrafting) return;
+      const target = bot.players[botState.followingPlayer]?.entity;
+      if (target) {
+        bot.pathfinder.setGoal(new goals.GoalFollow(target, 2), true);
+      }
+    });
+
+    // Discord message listener attached only once (prevents memory leak & duplicate replies)
+    if (!discordListenerAttached) {
+      discordListenerAttached = true;
+      discordClient.on('messageCreate', async (msg) => {
+        if (msg.author.bot || (DISCORD_CHANNEL_ID && msg.channel.id !== DISCORD_CHANNEL_ID)) return;
+        if (!activeBot) return;
+
+        const content = msg.content.trim();
+
+        if (content.startsWith('!craft ')) {
+          const parts = content.split(' ');
+          smartGatherAndCraft(activeBot, parts[1], parseInt(parts[2], 10) || 1);
+          return msg.reply(`🔨 Crafting routine started for ${parts[1]}`);
+        }
+        if (content.startsWith('!sort')) {
+          sortAndCleanInventory(activeBot);
+          return msg.reply('🎒 Inventory sorted and trash filtered!');
+        }
+        if (content.startsWith('!netherite')) {
+          startNetheritePipeline(activeBot);
+          return msg.reply('🔥 Netherite Autonomous Pipeline Initiated!');
+        }
+        if (content.startsWith('!ai ')) {
+          const reply = await askAiBrain(content.slice(4), { hp: activeBot.health, food: activeBot.food });
+          safeChat(activeBot, reply);
+          return msg.reply(`🤖 **AI:** ${reply}`);
+        }
+        if (content === '!status') {
+          return msg.reply(
+            `📊 HP: ${Math.round(activeBot.health || 20)}/20 | Auto-Defense: ${botState.guardMode ? 'ON' : 'OFF'} | Smelter: ${botState.autoSmelt ? 'ON' : 'OFF'} | Nether Mission: ${botState.netherMission.stage}`
+          );
+        }
+        if (content.startsWith('!say ')) {
+          safeChat(activeBot, content.slice(5));
+          return msg.react('💬');
+        }
+      });
+    }
 
     // Universal In-Game Chat Listener
     bot.on('messagestr', async (message) => {
@@ -1529,7 +1855,7 @@ if (require.main === module) {
     bot.on('error', (err) => {
       console.error('[CRITICAL BOT ERROR]', err.message);
     });
-  }
+  } // Closes launchBot()
 
   launchBot();
-}
+} // Closes if (require.main === module)
