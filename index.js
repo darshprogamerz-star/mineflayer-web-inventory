@@ -1633,63 +1633,9 @@ function webInventoryPlugin(bot, customOptions = {}) {
       }
     }
 
-    // 2. Scan Containers
-    if (mcData) {
-      const containerIds = [
-        mcData.blocksByName.chest?.id,
-        mcData.blocksByName.trapped_chest?.id,
-        mcData.blocksByName.barrel?.id
-      ].filter(Boolean);
-
-      const foundChests = bot.findBlocks({ matching: containerIds, maxDistance: 16, count: 8 });
-      const addedChests = [];
-
-      foundChests.forEach(pos => {
-        const isCloseToExisting = addedChests.some(cPos => cPos.distanceTo(pos) < 2);
-        if (!isCloseToExisting) {
-          addedChests.push(pos);
-          nearby.push({ name: 'Chest', type: 'chest', x: pos.x, y: pos.y, z: pos.z });
-        }
-      });
-
-      // 3. Scan Specific Ores with Clustering Logic
-      const oreList = [
-        { key: 'diamond', name: 'Diamond Ore', ids: [mcData.blocksByName.diamond_ore?.id, mcData.blocksByName.deepslate_diamond_ore?.id] },
-        { key: 'debris', name: 'Ancient Debris', ids: [mcData.blocksByName.ancient_debris?.id] },
-        { key: 'gold', name: 'Gold Ore', ids: [mcData.blocksByName.gold_ore?.id, mcData.blocksByName.deepslate_gold_ore?.id, mcData.blocksByName.nether_gold_ore?.id] },
-        { key: 'iron', name: 'Iron Ore', ids: [mcData.blocksByName.iron_ore?.id, mcData.blocksByName.deepslate_iron_ore?.id] },
-        { key: 'copper', name: 'Copper Ore', ids: [mcData.blocksByName.copper_ore?.id, mcData.blocksByName.deepslate_copper_ore?.id] },
-        { key: 'lapis', name: 'Lapis Ore', ids: [mcData.blocksByName.lapis_ore?.id, mcData.blocksByName.deepslate_lapis_ore?.id] },
-        { key: 'coal', name: 'Coal Ore', ids: [mcData.blocksByName.coal_ore?.id, mcData.blocksByName.deepslate_coal_ore?.id] }
-      ];
-
-      oreList.forEach(oreGroup => {
-        const validIds = oreGroup.ids.filter(Boolean);
-        if (validIds.length > 0) {
-          const blocks = bot.findBlocks({ matching: validIds, maxDistance: 16, count: 12 });
-          const trackedVeins = [];
-
-          blocks.forEach(pos => {
-            const isNearVein = trackedVeins.some(vPos => vPos.distanceTo(pos) < 2.5);
-            if (!isNearVein) {
-              trackedVeins.push(pos);
-              nearby.push({
-                name: oreGroup.name,
-                type: oreGroup.key,
-                x: pos.x,
-                y: pos.y,
-                z: pos.z
-              });
-            }
-          });
-        }
-      });
-    }
-
     /**
  * ============================================================================
  * MODULE: AUTONOMOUS NETHERITE PROGRESSION PIPELINE (CHAOS CUBED 26.2 READY)
- * FULL AUTONOMOUS FRAME BUILDER + STAIR-STEP Y:14 MINER + LAVA CLUTCH
  * ============================================================================
  */
 
@@ -1719,7 +1665,7 @@ async function startNetheritePipeline(bot) {
   botState.netherMission.stage = 'PORTAL_BUILD';
   botState.netherMission.debrisGathered = 0;
   botState.netherMission.homeCoords = bot.entity.position.clone();
-  
+
   safeChat(bot, "🟢 Protocol: Netherite Pipeline Active. 4x5 Portal frame banana shuru kar raha hoon...");
   await buildAndIgnitePortal(bot);
 }
@@ -1729,19 +1675,13 @@ async function buildAndIgnitePortal(bot) {
     const obsidian = bot.inventory.items().find(i => i.name === 'obsidian');
     if (!obsidian) throw new Error("Obsidian missing!");
 
-    // Base placement anchor in front of the bot
     const base = bot.entity.position.floored().offset(2, 0, 0);
     botState.netherMission.portalCoords = base;
 
-    // 4x5 Vertical Portal Frame Coordinates (Minimal 10 Obsidian)
     const frameOffsets = [
-      // Bottom Row (2 blocks)
       new Vec3(1, 0, 0), new Vec3(2, 0, 0),
-      // Left Column (3 blocks)
       new Vec3(0, 1, 0), new Vec3(0, 2, 0), new Vec3(0, 3, 0),
-      // Right Column (3 blocks)
       new Vec3(3, 1, 0), new Vec3(3, 2, 0), new Vec3(3, 3, 0),
-      // Top Row (2 blocks)
       new Vec3(1, 4, 0), new Vec3(2, 4, 0)
     ];
 
@@ -1775,7 +1715,6 @@ async function buildAndIgnitePortal(bot) {
       }
     }
 
-    // Step 2: Reliable Ignition using placeBlock on the top face
     const flint = bot.inventory.items().find(i => i.name === 'flint_and_steel');
     if (flint) {
       await bot.equip(flint, 'hand');
@@ -1789,7 +1728,6 @@ async function buildAndIgnitePortal(bot) {
 
     safeChat(bot, "🔥 Portal ignite ho gaya! Entering portal frame...");
     bot.pathfinder.setGoal(new goals.GoalBlock(base.x + 1, base.y + 1, base.z));
-
   } catch (err) {
     safeChat(bot, `❌ Portal build error: ${err.message}`);
     botState.netherMission.active = false;
@@ -1811,11 +1749,10 @@ async function executeNetherMining(bot) {
 
     const curPos = bot.entity.position.floored();
 
-    // 1. Safe Staircase Downward to Y:14
     if (curPos.y > 14) {
       const stepDownBlock = bot.blockAt(curPos.offset(1, -1, 0));
       const headBlock = bot.blockAt(curPos.offset(1, 0, 0));
-      
+
       if (headBlock && headBlock.name !== 'air' && !HAZARD_BLOCKS.includes(headBlock.name)) {
         await bot.dig(headBlock).catch(() => {});
       }
@@ -1827,7 +1764,6 @@ async function executeNetherMining(bot) {
       return;
     }
 
-    // 2. Scan Front Raycast for 26.2 Hazards (Sulfur Cubes, Lava, Magma)
     const front1 = bot.blockAt(curPos.offset(1, 0, 0));
     const front2 = bot.blockAt(curPos.offset(1, 1, 0));
 
@@ -1844,12 +1780,10 @@ async function executeNetherMining(bot) {
         await bot.equip(sealMat, 'hand');
         await bot.placeBlock(bot.blockAt(curPos), new Vec3(1, 0, 0)).catch(() => {});
       }
-      // Turn 90 degrees to bypass hazard wall
       await bot.look(bot.entity.yaw + Math.PI / 2, 0);
       return;
     }
 
-    // 3. Scan for Ancient Debris in 16-block radius
     const debris = bot.findBlock({
       matching: bot.registry.blocksByName.ancient_debris?.id,
       maxDistance: 16
@@ -1867,7 +1801,7 @@ async function executeNetherMining(bot) {
           clearInterval(miningInterval);
           botState.netherMission.stage = 'SMELT_AND_UPGRADE';
           safeChat(bot, "✅ Target pure ho gaye! Wapas portal par chal raha hoon...");
-          
+
           if (botState.netherMission.portalCoords) {
             bot.pathfinder.setGoal(new goals.GoalNear(
               botState.netherMission.portalCoords.x,
@@ -1883,7 +1817,6 @@ async function executeNetherMining(bot) {
       return;
     }
 
-    // 4. Default Tunneling Forward at Y:14
     if (front1 && front1.name !== 'air') await bot.dig(front1).catch(() => {});
     if (front2 && front2.name !== 'air') await bot.dig(front2).catch(() => {});
     bot.setControlState('forward', true);
@@ -1914,7 +1847,6 @@ if (require.main === module) {
       version: false
     });
 
-    // RENDER FIX: Launch Web UI immediately so Render binds port before 30s timeout
     if (!webServerStarted) {
       try {
         webInventoryPlugin(bot, { port: WEB_PORT });
@@ -1947,7 +1879,6 @@ if (require.main === module) {
       startMobDefense(bot);
     });
 
-    // Dimension Transition & Respawn Handler
     bot.on('respawn', () => {
       const dimension = bot.game.dimension;
       console.log(`[DIMENSION SHIFT] Transitioned to: ${dimension}`);
@@ -1970,7 +1901,6 @@ if (require.main === module) {
       }
     });
 
-    // Discord Synchronization Listener
     discordClient.on('messageCreate', async (msg) => {
       if (msg.author.bot || (DISCORD_CHANNEL_ID && msg.channel.id !== DISCORD_CHANNEL_ID)) return;
       const content = msg.content.trim();
@@ -2004,7 +1934,6 @@ if (require.main === module) {
       }
     });
 
-    // Universal In-Game Chat Listener
     bot.on('messagestr', async (message) => {
       if (message.startsWith(`[${bot.username}]`) || message.startsWith(`<${bot.username}>`)) return;
 
@@ -2025,8 +1954,7 @@ if (require.main === module) {
         const sender = actualText.split(' ')[0] || '';
         botState.followingPlayer = sender;
         safeChat(bot, "Aapke paas aa raha hoon!");
-      }
-      else if (cmd === 'stop') {
+      } else if (cmd === 'stop') {
         botState.followingPlayer = null;
         botState.isBusyCrafting = false;
         botState.autoSmelt = false;
@@ -2042,24 +1970,19 @@ if (require.main === module) {
         bot.pathfinder.stop();
         bot.collectBlock.cancelTask();
         safeChat(bot, "Sab stop kar diya!");
-      }
-      else if (cmd === 'netherite') {
+      } else if (cmd === 'netherite') {
         startNetheritePipeline(bot);
-      }
-      else if (cmd === 'craft' && args[1]) {
+      } else if (cmd === 'craft' && args[1]) {
         const count = parseInt(args[2], 10) || 1;
         smartGatherAndCraft(bot, args[1].toLowerCase(), count);
-      }
-      else if (cmd === 'sort') {
+      } else if (cmd === 'sort') {
         sortAndCleanInventory(bot);
-      }
-      else if (cmd === 'smelt') {
+      } else if (cmd === 'smelt') {
         botState.autoSmelt = !botState.autoSmelt;
         if (botState.autoSmelt) runAutoSmelter(bot);
         else clearTimeout(botState.smeltingInterval);
         safeChat(bot, `🔥 Auto Smelter: ${botState.autoSmelt ? 'ON' : 'OFF'}`);
-      }
-      else if (cmd === 'guard' || cmd === 'defense') {
+      } else if (cmd === 'guard' || cmd === 'defense') {
         botState.guardMode = !botState.guardMode;
         if (botState.guardMode) {
           startMobDefense(bot);
@@ -2067,14 +1990,19 @@ if (require.main === module) {
           stopMobDefense();
         }
         safeChat(bot, `🛡️ Auto Mob Defense: ${botState.guardMode ? 'ON' : 'OFF'}`);
-      }
-      else if (cmd === 'afk') {
-        botState.antiAfk ? stopAntiAfk(bot) : startAntiAfk(bot);
-      }
-      else if (cmd === 'fish') {
-        botState.isFishing ? stopFishing() : startFishing(bot);
-      }
-      else if (cmd === 'farm') {
+      } else if (cmd === 'afk') {
+        if (botState.antiAfk) {
+          stopAntiAfk(bot);
+        } else {
+          startAntiAfk(bot);
+        }
+      } else if (cmd === 'fish') {
+        if (botState.isFishing) {
+          stopFishing();
+        } else {
+          startFishing(bot);
+        }
+      } else if (cmd === 'farm') {
         botState.autoFarm = !botState.autoFarm;
         if (botState.autoFarm) {
           runFarmLoop(bot);
@@ -2082,14 +2010,11 @@ if (require.main === module) {
           clearTimeout(botState.farmingInterval);
         }
         safeChat(bot, `🌾 Auto Farm: ${botState.autoFarm ? 'ON' : 'OFF'}`);
-      }
-      else if (cmd === 'deposit' || cmd === 'chest') {
+      } else if (cmd === 'deposit' || cmd === 'chest') {
         dumpToChest(bot);
-      }
-      else if (cmd === 'build' && args[1] === 'house') {
+      } else if (cmd === 'build' && args[1] === 'house') {
         executeHouseBuild(bot);
-      }
-      else if (cmd === 'mine' || cmd === 'collect') {
+      } else if (cmd === 'mine' || cmd === 'collect') {
         let blockQuery = args[1]?.toLowerCase();
         let count = parseInt(args[2], 10) || 1;
         const mcData = require('minecraft-data')(bot.version);
@@ -2111,21 +2036,19 @@ if (require.main === module) {
         } catch (e) {
           safeChat(bot, `Mining Error: ${e.message}`);
         }
-      }
-            else if (cmd === 'dropall') {
+      } else if (cmd === 'dropall') {
         for (const item of bot.inventory.items()) {
           try { await bot.tossStack(item); } catch (e) {}
         }
         safeChat(bot, "Sari inventory drop kar di!");
-      }
-      else {
+      } else {
         if (lower.includes('nokar') || lower.includes('bot') || lower.startsWith('!ai')) {
           const prompt = actualText.replace(/^(nokar|bot|!ai)\s*/i, '');
           const reply = await askAiBrain(prompt || "hi", { hp: bot.health, food: bot.food });
           safeChat(bot, reply);
         }
       }
-    }); // Line 2130 approx: Close bot.on('messagestr')
+    });
 
     bot.on('end', () => {
       console.log('[RECONNECT] Connection ended. Reconnecting in 10s...');
@@ -2135,13 +2058,12 @@ if (require.main === module) {
     bot.on('error', (err) => {
       console.error('[CRITICAL BOT ERROR]', err.message);
     });
-  } // Line 2142 approx: Close launchBot()
+  }
 
   launchBot();
-} // Line 2146 approx: Close if (require.main === module)
+}
 
 
+  
 
-                    
-
-      
+     
