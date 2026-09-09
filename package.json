@@ -1,12 +1,10 @@
 {
   "name": "titan-autonomous-bot",
   "version": "33.0.0",
-  "description": "Titan Autonomous Minecraft Companion V33 (1.26.2 Support + Netherite Pipeline + AI)",
+  "description": "Titan Autonomous Minecraft Companion",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node index.js --dev",
-    "test": "node index.js --test"
+    "start": "node index.js"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -14,30 +12,13 @@
   "dependencies": {
     "discord.js": "^14.14.1",
     "express": "^4.18.2",
-    "lodash": "^4.17.21",
-    "minecraft-data": "^3.80.0",
-    "mineflayer": "^4.23.0",
-    "mineflayer-auto-eat": "^3.3.5",
-    "mineflayer-collectblock": "^1.4.2",
-    "mineflayer-pathfinder": "^2.4.7",
-    "mineflayer-pvp": "^1.3.3",
+    "minecraft-data": "^3.70.0",
+    "mineflayer": "^4.20.0",
+    "mineflayer-auto-eat": "^3.3.4",
+    "mineflayer-collectblock": "^1.4.1",
+    "mineflayer-pathfinder": "^2.4.5",
+    "mineflayer-pvp": "^1.3.2",
     "socket.io": "^4.7.2",
-    "vec3": "^0.1.8"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.1"
-  },
-  "keywords": [
-    "minecraft",
-    "bot",
-    "mineflayer",
-    "automation",
-    "netherite",
-    "ai",
-    "discord",
-    "titan",
-    "1.26.2"
-  ],
-  "author": "Titan",
-  "license": "MIT"
+    "vec3": "^0.1.7"
+  }
 }
