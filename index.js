@@ -2127,7 +2127,7 @@ if (require.main === module) {
       }
     });
 
-    bot.on('end', () => {
+        bot.on('end', () => {
       console.log('[RECONNECT] Connection ended. Reconnecting in 10s...');
       setTimeout(launchBot, 10000);
     });
@@ -2139,6 +2139,7 @@ if (require.main === module) {
 
   launchBot();
 }
+
 
                     
 
