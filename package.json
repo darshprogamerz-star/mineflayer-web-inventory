@@ -1,7 +1,7 @@
 {
   "name": "titan-autonomous-bot",
   "version": "33.0.0",
-  "description": "Titan Autonomous Minecraft Companion V33 (Netherite Pipeline + Gemini AI + Full Automation)",
+  "description": "Titan Autonomous Minecraft Companion V33 (1.26.2 Support + Netherite Pipeline + AI)",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -15,14 +15,14 @@
     "discord.js": "^14.14.1",
     "express": "^4.18.2",
     "lodash": "^4.17.21",
-    "minecraft-data": "^3.70.0",
-    "mineflayer": "^4.20.0",
-    "mineflayer-auto-eat": "^3.3.4",
-    "mineflayer-collectblock": "^1.4.1",
-    "mineflayer-pathfinder": "^2.4.5",
-    "mineflayer-pvp": "^1.3.2",
+    "minecraft-data": "^3.80.0",
+    "mineflayer": "^4.23.0",
+    "mineflayer-auto-eat": "^3.3.5",
+    "mineflayer-collectblock": "^1.4.2",
+    "mineflayer-pathfinder": "^2.4.7",
+    "mineflayer-pvp": "^1.3.3",
     "socket.io": "^4.7.2",
-    "vec3": "^0.1.7"
+    "vec3": "^0.1.8"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
@@ -35,16 +35,9 @@
     "netherite",
     "ai",
     "discord",
-    "titan"
+    "titan",
+    "1.26.2"
   ],
   "author": "Titan",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/yourusername/titan-autonomous-bot.git"
-  },
-  "bugs": {
-    "url": "https://github.com/yourusername/titan-autonomous-bot/issues"
-  },
-  "homepage": "https://github.com/yourusername/titan-autonomous-bot#readme"
+  "license": "MIT"
 }
