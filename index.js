@@ -2112,7 +2112,7 @@ if (require.main === module) {
           safeChat(bot, `Mining Error: ${e.message}`);
         }
       }
-      else if (cmd === 'dropall') {
+            else if (cmd === 'dropall') {
         for (const item of bot.inventory.items()) {
           try { await bot.tossStack(item); } catch (e) {}
         }
@@ -2125,9 +2125,9 @@ if (require.main === module) {
           safeChat(bot, reply);
         }
       }
-    });
+    }); // Line 2130 approx: Close bot.on('messagestr')
 
-        bot.on('end', () => {
+    bot.on('end', () => {
       console.log('[RECONNECT] Connection ended. Reconnecting in 10s...');
       setTimeout(launchBot, 10000);
     });
@@ -2135,10 +2135,11 @@ if (require.main === module) {
     bot.on('error', (err) => {
       console.error('[CRITICAL BOT ERROR]', err.message);
     });
-  }
+  } // Line 2142 approx: Close launchBot()
 
   launchBot();
-}
+} // Line 2146 approx: Close if (require.main === module)
+
 
 
                     
