@@ -1,24 +1,8 @@
 /**
  * ============================================================================
  * TITAN AUTONOMOUS MINECRAFT COMPANION & OPERATIONS CONSOLE
- * VERSION: 31.0.0 (ULTIMATE MASTER EDITION - AUTO SMELTER & INVENTORY SORTER)
- * ============================================================================
- * Included Systems:
- * - Direct Raycast Combat & Auto Mob Defense Engine
- * - Smart Multi-Step Gather & Crafting System (Wood to Tools)
- * - Auto-Smelter Integration (Automatic Furnace Ore Smelting Routine)
- * - Advanced Inventory Sorter & Garbage Filter (Auto-Deposit & Trash Clean)
- * - 2D Dynamic Compass Radar (N, S, E, W + Live Distance Tracking)
- * - X-Ray Filter Toggle (Show All vs Mobs/Players Only)
- * - Bot Live Exact Position (X, Y, Z) HUD Badge
- * - Container Scanner (Chests, Trapped Chests, Barrels, Furnaces)
- * - Full Ore Classifier (Diamond, Ancient Debris, Gold, Iron, Copper, Lapis, Coal)
- * - Complete Interactive Web Dashboard with Fixed Square Inventory Grid
- * - Manual Combat Buttons (Attack, Mine, Place) & Responsive D-Pad Controls
- * - Autonomous Routines: Guard Mode, Auto-Farm, Auto-Fish, 4x4 House Builder
- * - Dual-Way Discord Synchronizer (!ai, !status, !say, !craft)
- * - Universal Server Message Listener (Aternos / Geyser / Java Supported)
- * - Gemini 2.5 Flash Native AI Engine with Direct Endpoint Authentication
+ * VERSION: 33.0.0 (CHAOS CUBED 26.2 & NETHERITE PIPELINE EXPANDED)
+ * PART 1: CORE ENGINES, AI, COMBAT, CRAFTING & SURVIVAL ROUTINES
  * ============================================================================
  */
 
@@ -52,12 +36,55 @@ const botState = {
   isFishing: false,
   isBusyCrafting: false,
   autoSmelt: false,
-  smeltingInterval: null
+  smeltingInterval: null,
+  // 26.2 Netherite Progression Pipeline State
+  netherMission: {
+    active: false,
+    stage: 'IDLE', // 'PREP', 'PORTAL_BUILD', 'NETHER_MINING', 'SMELT_AND_UPGRADE'
+    debrisGathered: 0,
+    targetDebris: 4,
+    portalCoords: null,
+    homeCoords: null
+  }
 };
 
 /**
  * ============================================================================
- * HOSTILE MOBS REGISTRY
+ * ANTI-SPAM QUEUE ENGINE (PREVENTS KICKED FOR SPAMMING)
+ * ============================================================================
+ */
+const chatQueue = [];
+let isProcessingChat = false;
+
+function safeChat(bot, message) {
+  if (!message) return;
+  const cleanMsg = message.toString().trim();
+  if (!cleanMsg) return;
+  chatQueue.push(cleanMsg);
+  processChatQueue(bot);
+}
+
+function processChatQueue(bot) {
+  if (isProcessingChat || chatQueue.length === 0) return;
+  isProcessingChat = true;
+  try {
+    if (bot && typeof bot.chat === 'function') {
+      bot.chat(chatQueue.shift());
+    }
+  } catch (err) {
+    console.error('[CHAT QUEUE ERROR]', err.message);
+  }
+
+  // 1.8 seconds safe rate-limit gap
+  setTimeout(() => {
+    isProcessingChat = false;
+    processChatQueue(bot);
+  }, 1800);
+}
+
+/**
+ * ============================================================================
+ * HOSTILE MOBS & 26.2 HAZARDS REGISTRY
  * ============================================================================
  */
 const HOSTILE_MOBS = [
@@ -77,6 +104,15 @@ const HOSTILE_MOBS = [
   'piglin_brute',
   'stray',
   'wither_skeleton'
+];
+
+const HAZARD_BLOCKS = [
+  'lava',
+  'flowing_lava',
+  'sulfur_cube',
+  'magma_block',
+  'fire',
+  'soul_fire'
 ];
 
 /**
@@ -169,7 +205,7 @@ async function askAiBrain(promptText, botStatus) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     console.error('[AI CONFIG] GEMINI_API_KEY environment variable is not defined.');
-    return "Boss, Render me GEMINI_API_KEY set nahi hai!";
+    return "Boss, GEMINI_API_KEY set nahi hai!";
   }
 
   const cleanKey = apiKey.trim();
@@ -177,7 +213,7 @@ async function askAiBrain(promptText, botStatus) {
 
   try {
     const userPrompt = `You are 'Nokar', an intelligent, humorous, and loyal Minecraft companion. Reply strictly in short natural Hinglish under 20 words. Current Status -> Health: ${botStatus.hp}/20, Food: ${botStatus.food}/20. User says: "${promptText}"`;
-    
+
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -216,7 +252,7 @@ async function askAiBrain(promptText, botStatus) {
 
 /**
  * ============================================================================
- * DISCORD REAL-TIME BRIDGE
+ * DISCORD REAL-TIME BRIDGE SETUP
  * ============================================================================
  */
 const discordClient = new Client({
@@ -241,7 +277,7 @@ if (DISCORD_TOKEN) {
     if (DISCORD_CHANNEL_ID) {
       discordChannel = await discordClient.channels.fetch(DISCORD_CHANNEL_ID).catch(() => null);
       if (discordChannel) {
-        discordChannel.send('🟢 **Titan Autonomous System V31 (Smelter & Sorter) Online!**');
+        discordChannel.send('🟢 **Titan Autonomous System V33 (Chaos Cubed Ready) Online!**');
       }
     }
   });
@@ -253,7 +289,7 @@ if (DISCORD_TOKEN) {
  * ============================================================================
  */
 async function equipBestWeapon(bot) {
-  const weapons = bot.inventory.items().filter(item => 
+  const weapons = bot.inventory.items().filter(item =>
     item.name.includes('sword') || item.name.includes('axe')
   );
   if (!weapons.length) return false;
@@ -340,9 +376,12 @@ function startMobDefense(bot) {
       if (distance > 3.2) {
         bot.pathfinder.setGoal(new goals.GoalFollow(targetMob, 2.5), false);
       } else {
-        const aimOffset = targetMob.height ? targetMob.height * 0.75 : 1.2;
-        await bot.lookAt(targetMob.position.offset(0, aimOffset, 0));
-        bot.attack(targetMob);
+        if (!bot.lastAttack || Date.now() - bot.lastAttack > 800) {
+          bot.lastAttack = Date.now();
+          const aimOffset = targetMob.height ? targetMob.height * 0.75 : 1.2;
+          await bot.lookAt(targetMob.position.offset(0, aimOffset, 0));
+          bot.attack(targetMob);
+        }
       }
     }
   }, 350);
@@ -356,27 +395,27 @@ function stopMobDefense() {
 
 /**
  * ============================================================================
- * NEW IDEA 1: AUTO-SMELTER SYSTEM (FURNACE AUTOMATION)
+ * AUTO-SMELTER SYSTEM (FURNACE AUTOMATION)
  * ============================================================================
  */
 async function runAutoSmelter(bot) {
   if (!botState.autoSmelt) return;
   const mcData = require('minecraft-data')(bot.version);
 
-  const rawOres = bot.inventory.items().filter(i => 
+  const rawOres = bot.inventory.items().filter(i =>
     i.name.includes('raw_iron') || i.name.includes('raw_gold') || i.name.includes('raw_copper') || i.name.includes('_ore')
   );
 
   if (rawOres.length === 0) return;
 
-  const fuel = bot.inventory.items().filter(i => 
+  const fuel = bot.inventory.items().filter(i =>
     i.name.includes('coal') || i.name.includes('charcoal') || i.name.includes('_log') || i.name.includes('_planks')
   );
 
   if (fuel.length === 0) return;
 
   let furnaceBlock = bot.findBlock({ matching: mcData.blocksByName.furnace?.id, maxDistance: 5 });
-  
+
   if (!furnaceBlock) {
     const cobblestone = bot.inventory.items().filter(i => i.name === 'cobblestone');
     const totalCobble = cobblestone.reduce((acc, cur) => acc + cur.count, 0);
@@ -386,7 +425,7 @@ async function runAutoSmelter(bot) {
       if (furnaceRecipe) {
         try {
           await bot.craft(furnaceRecipe, 1, null);
-          bot.chat("🔥 Furnace craft kar liya!");
+          safeChat(bot, "🔥 Furnace craft kar liya!");
           await bot.waitForTicks(10);
         } catch (e) {}
       }
@@ -413,7 +452,7 @@ async function runAutoSmelter(bot) {
 
       if (furnace.inputItem() === null && targetOre) {
         await furnace.putInput(targetOre.type, null, Math.min(targetOre.count, 16));
-        bot.chat(`🔥 Pighlane ke liye ${targetOre.name} daala furnace me.`);
+        safeChat(bot, `🔥 Pighlane ke liye ${targetOre.name} daala furnace me.`);
       }
 
       if (furnace.fuelItem() === null && targetFuel) {
@@ -431,7 +470,7 @@ async function runAutoSmelter(bot) {
 
 /**
  * ============================================================================
- * NEW IDEA 2: ADVANCED INVENTORY SORTER & GARBAGE FILTER
+ * ADVANCED INVENTORY SORTER & GARBAGE FILTER
  * ============================================================================
  */
 async function sortAndCleanInventory(bot) {
@@ -439,7 +478,7 @@ async function sortAndCleanInventory(bot) {
   const trashFound = bot.inventory.items().filter(i => junkItems.includes(i.name));
 
   if (trashFound.length > 0) {
-    bot.chat("🗑️ Inventory clean kar raha hoon (kachra hata raha hoon)...");
+    safeChat(bot, "🗑️ Inventory clean kar raha hoon (kachra hata raha hoon)...");
     for (const item of trashFound) {
       try {
         if (item.count >= 16) {
@@ -459,7 +498,7 @@ async function sortAndCleanInventory(bot) {
   if (chestBlock) {
     try {
       const chestWindow = await bot.openChest(chestBlock);
-      const valuables = bot.inventory.items().filter(i => 
+      const valuables = bot.inventory.items().filter(i =>
         i.name.includes('diamond') || i.name.includes('gold') || i.name.includes('iron') || i.name.includes('emerald') || i.name.includes('debris')
       );
 
@@ -472,7 +511,7 @@ async function sortAndCleanInventory(bot) {
       chestWindow.close();
     } catch (e) {}
   }
-  bot.chat("✨ Inventory sorted and optimized!");
+  safeChat(bot, "✨ Inventory sorted and optimized!");
 }
 
 /**
@@ -482,7 +521,7 @@ async function sortAndCleanInventory(bot) {
  */
 async function smartGatherAndCraft(bot, targetItemName, count = 1) {
   if (botState.isBusyCrafting) {
-    return bot.chat("Pehle se ek crafting task chal raha hai boss!");
+    return safeChat(bot, "Pehle se ek crafting task chal raha hai boss!");
   }
 
   botState.isBusyCrafting = true;
@@ -491,22 +530,22 @@ async function smartGatherAndCraft(bot, targetItemName, count = 1) {
 
   if (!targetItem) {
     botState.isBusyCrafting = false;
-    return bot.chat(`"${targetItemName}" koi valid Minecraft item nahi hai.`);
+    return safeChat(bot, `"${targetItemName}" koi valid Minecraft item nahi hai.`);
   }
 
-  bot.chat(`🛠️ Checking materials for ${count}x ${targetItemName}...`);
+  safeChat(bot, `🛠️ Checking materials for ${count}x ${targetItemName}...`);
 
   async function ensureLogsAvailable(minLogs = 3) {
     const currentLogs = bot.inventory.items().filter(i => i.name.includes('_log'));
     const totalLogs = currentLogs.reduce((acc, cur) => acc + cur.count, 0);
 
     if (totalLogs < minLogs) {
-      bot.chat(`🌲 Lakdi kam hai, ped dhoondh raha hoon...`);
+      safeChat(bot, `🌲 Lakdi kam hai, ped dhoondh raha hoon...`);
       const logIds = BLOCK_ALIASES['wood'].map(n => mcData.blocksByName[n]?.id).filter(Boolean);
       const woodBlocks = bot.findBlocks({ matching: logIds, maxDistance: 32, count: 6 });
 
       if (!woodBlocks.length) {
-        bot.chat("Aas-paas koi ped nahi mila!");
+        safeChat(bot, "Aas-paas koi ped nahi mila!");
         return false;
       }
 
@@ -514,7 +553,7 @@ async function smartGatherAndCraft(bot, targetItemName, count = 1) {
       await equipBestTool(bot, blockTargets[0]);
       try {
         await bot.collectBlock.collect(blockTargets);
-        bot.chat("Lakdi ikattha kar li!");
+        safeChat(bot, "Lakdi ikattha kar li!");
       } catch (err) {
         return false;
       }
@@ -596,15 +635,15 @@ async function smartGatherAndCraft(bot, targetItemName, count = 1) {
     }
 
     if (!recipes.length) {
-      bot.chat(`Recipe nahi mili ya ingredients kam hain ${targetItemName} ke liye.`);
+      safeChat(bot, `Recipe nahi mili ya ingredients kam hain ${targetItemName} ke liye.`);
       botState.isBusyCrafting = false;
       return;
     }
 
     await bot.craft(recipes[0], count, craftingTable);
-    bot.chat(`✅ Success! ${count}x ${targetItemName} craft ho gaya.`);
+    safeChat(bot, `✅ Success! ${count}x ${targetItemName} craft ho gaya.`);
   } catch (err) {
-    bot.chat(`Crafting error: ${err.message}`);
+    safeChat(bot, `Crafting error: ${err.message}`);
   } finally {
     botState.isBusyCrafting = false;
   }
@@ -612,12 +651,12 @@ async function smartGatherAndCraft(bot, targetItemName, count = 1) {
 
 /**
  * ============================================================================
- * AUTONOMOUS SUB-ROUTINES (AFK, FISH, FARM, BUILD, CHEST DUMP)
+ * AUTONOMOUS SURVIVAL SUB-ROUTINES (AFK, FISH, FARM, BUILD, CHEST DUMP)
  * ============================================================================
  */
 function startAntiAfk(bot) {
   botState.antiAfk = true;
-  bot.chat("🚶 Anti-AFK Wander ON!");
+  safeChat(bot, "🚶 Anti-AFK Wander ON!");
   const origin = bot.entity.position.clone();
 
   botState.antiAfkInterval = setInterval(async () => {
@@ -643,11 +682,11 @@ function stopAntiAfk(bot) {
 async function startFishing(bot) {
   const rod = bot.inventory.items().find(i => i.name === 'fishing_rod');
   if (!rod) {
-    return bot.chat("Mere paas Fishing Rod nahi hai boss!");
+    return safeChat(bot, "Mere paas Fishing Rod nahi hai boss!");
   }
 
   botState.isFishing = true;
-  bot.chat("🎣 Fishing shuru kar raha hoon...");
+  safeChat(bot, "🎣 Fishing shuru kar raha hoon...");
   await bot.equip(rod, 'hand');
 
   async function cast() {
@@ -685,7 +724,7 @@ async function runFarmLoop(bot) {
       await bot.collectBlock.collect(matureCrops.map(pos => bot.blockAt(pos)));
       for (const pos of matureCrops) {
         const soil = bot.blockAt(pos.offset(0, -1, 0));
-        const seed = bot.inventory.items().find(i => 
+        const seed = bot.inventory.items().find(i =>
           i.name.includes('seeds') || i.name === 'carrot' || i.name === 'potato'
         );
         if (soil && soil.name === 'farmland' && seed) {
@@ -703,14 +742,14 @@ async function runFarmLoop(bot) {
 }
 
 async function executeHouseBuild(bot) {
-  const getMat = () => bot.inventory.items().find(i => 
+  const getMat = () => bot.inventory.items().find(i =>
     i.name.includes('plank') || i.name.includes('cobble') || i.name.includes('stone') || i.name.includes('dirt')
   );
   if (!getMat()) {
-    return bot.chat("Ghar banane ke liye blocks nahi hain!");
+    return safeChat(bot, "Ghar banane ke liye blocks nahi hain!");
   }
 
-  bot.chat("🏠 Shelter banana shuru kar raha hoon...");
+  safeChat(bot, "🏠 Shelter banana shuru kar raha hoon...");
   const base = bot.entity.position.floored().offset(1, 0, 1);
   const layout = [];
 
@@ -736,7 +775,7 @@ async function executeHouseBuild(bot) {
     if (!cur || cur.name !== 'air') continue;
     const blockItem = getMat();
     if (!blockItem) {
-      return bot.chat("Blocks khatam ho gaye!");
+      return safeChat(bot, "Blocks khatam ho gaye!");
     }
 
     try {
@@ -762,7 +801,7 @@ async function executeHouseBuild(bot) {
       }
     } catch (e) {}
   }
-  bot.chat("Ghar ready ho gaya boss!");
+  safeChat(bot, "Ghar ready ho gaya boss!");
 }
 
 async function dumpToChest(bot) {
@@ -777,10 +816,10 @@ async function dumpToChest(bot) {
   });
 
   if (!container) {
-    return bot.chat("Paas me Chest ya Barrel nahi hai!");
+    return safeChat(bot, "Paas me Chest ya Barrel nahi hai!");
   }
 
-  bot.chat("📦 Saman chest me rakh raha hoon...");
+  safeChat(bot, "📦 Saman chest me rakh raha hoon...");
   try {
     const window = await bot.openChest(container);
     for (const item of bot.inventory.items()) {
@@ -793,9 +832,9 @@ async function dumpToChest(bot) {
       } catch (e) {}
     }
     window.close();
-    bot.chat("Deposit ho gaya!");
+    safeChat(bot, "Deposit ho gaya!");
   } catch (err) {
-    bot.chat(`Chest error: ${err.message}`);
+    safeChat(bot, `Chest error: ${err.message}`);
   }
 }
 
@@ -819,7 +858,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-        <title>Titan Master Console V31</title>
+        <title>Titan Master Console V33</title>
         <script src="/socket.io/socket.io.js"></script>
         <style>
           * {
@@ -970,6 +1009,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
           .btn-drop { background: #e11d48; } 
           .btn-smelt { background: #ea580c; }
           .btn-sort { background: #7c3aed; }
+          .btn-nether { background: #9333ea; }
           .btn-stop { background: #991b1b; grid-column: span 2; padding: 12px; font-size: 13px; }
           
           .bot-pos-bar {
@@ -1138,7 +1178,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
       <body>
         <div class="panel">
           <div class="top-bar">
-            <div class="title">🎮 Titan Master Console</div>
+            <div class="title">🎮 Titan Master Console V33</div>
             <div style="font-size:11px; color:#22c55e; font-weight:bold;">● Live Connected</div>
           </div>
           
@@ -1175,6 +1215,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
             <button class="act-btn btn-sort" onclick="send('sort_inv')">🎒 Sort Inventory</button>
             <button class="act-btn btn-build" onclick="send('build_house')">🏠 Build House</button>
             <button class="act-btn btn-chest" onclick="send('dump_chest')">📦 Dump Chest</button>
+            <button class="act-btn btn-nether" onclick="send('nether_run')">🔥 Netherite Run</button>
             <button class="act-btn btn-drop" onclick="send('drop_hand')">🗑️ Drop Hand</button>
             <button class="act-btn btn-stop" onclick="send('stop')">🛑 Stop All</button>
           </div>
@@ -1462,6 +1503,10 @@ function webInventoryPlugin(bot, customOptions = {}) {
       dumpToChest(bot);
       return res.json({ success: true });
     }
+    if (act === 'nether_run') {
+      startNetheritePipeline(bot);
+      return res.json({ success: true });
+    }
     if (act === 'drop_hand') {
       const held = bot.heldItem;
       if (held) bot.tossStack(held).catch(() => {});
@@ -1476,11 +1521,13 @@ function webInventoryPlugin(bot, customOptions = {}) {
       stopFishing();
       botState.autoFarm = false;
       clearTimeout(botState.farmingInterval);
+      botState.netherMission.active = false;
+      botState.netherMission.stage = 'IDLE';
 
       bot.clearControlStates();
       bot.pathfinder.stop();
       bot.collectBlock.cancelTask();
-      bot.chat("Sab stop kar diya!");
+      safeChat(bot, "Sab stop kar diya!");
       return res.json({ success: true });
     }
 
@@ -1543,10 +1590,10 @@ function webInventoryPlugin(bot, customOptions = {}) {
           const parts = msg.split(' ');
           smartGatherAndCraft(bot, parts[1], parseInt(parts[2], 10) || 1);
         } else if (msg.startsWith('!')) {
-          bot.chat(msg);
+          safeChat(bot, msg);
         } else {
           const reply = await askAiBrain(msg, { hp: bot.health, food: bot.food });
-          bot.chat(reply);
+          safeChat(bot, reply);
         }
       }
     });
@@ -1652,6 +1699,219 @@ function webInventoryPlugin(bot, customOptions = {}) {
 
 /**
  * ============================================================================
+ * MODULE: AUTONOMOUS NETHERITE PROGRESSION PIPELINE (CHAOS CUBED 26.2 READY)
+ * FULL AUTONOMOUS FRAME BUILDER + STAIR-STEP Y:14 MINER + LAVA CLUTCH
+ * ============================================================================
+ */
+
+async function startNetheritePipeline(bot) {
+  if (botState.netherMission.active) {
+    return safeChat(bot, "Mission already chal raha hai boss!");
+  }
+
+  const obsidianCount = bot.inventory.items()
+    .filter(i => i.name === 'obsidian')
+    .reduce((acc, cur) => acc + cur.count, 0);
+
+  const hasFlint = bot.inventory.items().some(i => i.name === 'flint_and_steel');
+  const pickaxe = bot.inventory.items().find(i => i.name.includes('diamond_pickaxe') || i.name.includes('netherite_pickaxe'));
+
+  if (obsidianCount < 10) {
+    return safeChat(bot, `❌ Cancelled: Kam se kam 10 Obsidian chahiye (Mere paas ${obsidianCount} hai).`);
+  }
+  if (!hasFlint) {
+    return safeChat(bot, "❌ Cancelled: Flint and Steel missing hai!");
+  }
+  if (!pickaxe) {
+    return safeChat(bot, "❌ Cancelled: Ancient Debris todne ke liye Diamond ya Netherite Pickaxe chahiye!");
+  }
+
+  botState.netherMission.active = true;
+  botState.netherMission.stage = 'PORTAL_BUILD';
+  botState.netherMission.debrisGathered = 0;
+  botState.netherMission.homeCoords = bot.entity.position.clone();
+  
+  safeChat(bot, "🟢 Protocol: Netherite Pipeline Active. 4x5 Portal frame banana shuru kar raha hoon...");
+  await buildAndIgnitePortal(bot);
+}
+
+async function buildAndIgnitePortal(bot) {
+  try {
+    const obsidian = bot.inventory.items().find(i => i.name === 'obsidian');
+    if (!obsidian) throw new Error("Obsidian missing!");
+
+    // Base point in front of the bot
+    const base = bot.entity.position.floored().offset(2, 0, 0);
+    botState.netherMission.portalCoords = base;
+
+    // 4x5 Vertical Portal Frame Coordinates (Minimal 10 Obsidian frame without corners)
+    const frameOffsets = [
+      // Bottom Row (2 blocks)
+      new Vec3(1, 0, 0), new Vec3(2, 0, 0),
+      // Left Column (3 blocks)
+      new Vec3(0, 1, 0), new Vec3(0, 2, 0), new Vec3(0, 3, 0),
+      // Right Column (3 blocks)
+      new Vec3(3, 1, 0), new Vec3(3, 2, 0), new Vec3(3, 3, 0),
+      // Top Row (2 blocks)
+      new Vec3(1, 4, 0), new Vec3(2, 4, 0)
+    ];
+
+    for (const offset of frameOffsets) {
+      const targetPos = base.plus(offset);
+      const current = bot.blockAt(targetPos);
+
+      if (current && current.name !== 'obsidian') {
+        // Move near to place safely
+        if (bot.entity.position.distanceTo(targetPos) > 4) {
+          await bot.pathfinder.goto(new goals.GoalNear(targetPos.x, targetPos.y, targetPos.z, 3)).catch(() => {});
+        }
+
+        await bot.equip(obsidian, 'hand');
+
+        // Look for adjacent reference block to click on
+        const neighbors = [
+          targetPos.offset(0, -1, 0),
+          targetPos.offset(1, 0, 0),
+          targetPos.offset(-1, 0, 0),
+          targetPos.offset(0, 1, 0)
+        ];
+
+        let placed = false;
+        for (const nPos of neighbors) {
+          const neighborBlock = bot.blockAt(nPos);
+          if (neighborBlock && neighborBlock.name !== 'air') {
+            await bot.lookAt(targetPos);
+            await bot.placeBlock(neighborBlock, targetPos.minus(nPos)).catch(() => {});
+            await bot.waitForTicks(4);
+            placed = true;
+            break;
+          }
+        }
+      }
+    }
+
+    // Step 2: Ignite the Bottom of the Frame
+    const flint = bot.inventory.items().find(i => i.name === 'flint_and_steel');
+    if (flint) {
+      await bot.equip(flint, 'hand');
+      const bottomPortalBlock = bot.blockAt(base.offset(1, 0, 0));
+      if (bottomPortalBlock) {
+        await bot.lookAt(bottomPortalBlock.position);
+        // Ignite top face of the bottom obsidian block
+        await bot.activateBlock(bottomPortalBlock, new Vec3(0, 1, 0)).catch(() => {});
+        await bot.waitForTicks(10);
+      }
+    }
+
+    safeChat(bot, "🔥 Portal ignite ho gaya! Nether me enter ho raha hoon...");
+    bot.pathfinder.setGoal(new goals.GoalBlock(base.x + 1, base.y + 1, base.z));
+
+  } catch (err) {
+    safeChat(bot, `❌ Portal build error: ${err.message}`);
+    botState.netherMission.active = false;
+    botState.netherMission.stage = 'IDLE';
+  }
+}
+
+async function executeNetherMining(bot) {
+  botState.netherMission.stage = 'NETHER_MINING';
+  safeChat(bot, "⛏️ Nether pahunch gaya! Y:14 Ancient Debris safe search shuru...");
+
+  const diamondPick = bot.inventory.items().find(i => i.name.includes('pickaxe'));
+  if (diamondPick) await bot.equip(diamondPick, 'hand');
+
+  // Strip-mine mining cycle
+  const miningInterval = setInterval(async () => {
+    if (botState.netherMission.stage !== 'NETHER_MINING') {
+      return clearInterval(miningInterval);
+    }
+
+    const curPos = bot.entity.position.floored();
+
+    // 1. Safe Staircase Downward to Y:14 if high up
+    if (curPos.y > 14) {
+      const stepDownBlock = bot.blockAt(curPos.offset(1, -1, 0));
+      const headBlock = bot.blockAt(curPos.offset(1, 0, 0));
+      
+      // Dig step
+      if (headBlock && headBlock.name !== 'air' && !HAZARD_BLOCKS.includes(headBlock.name)) {
+        await bot.dig(headBlock).catch(() => {});
+      }
+      if (stepDownBlock && stepDownBlock.name !== 'air' && !HAZARD_BLOCKS.includes(stepDownBlock.name)) {
+        await bot.dig(stepDownBlock).catch(() => {});
+      }
+      bot.setControlState('forward', true);
+      setTimeout(() => bot.setControlState('forward', false), 400);
+      return;
+    }
+
+    // 2. Scan Front Raycast for 26.2 Hazards (Sulfur Cubes, Lava, Magma)
+    const front1 = bot.blockAt(curPos.offset(1, 0, 0));
+    const front2 = bot.blockAt(curPos.offset(1, 1, 0));
+
+    const hazardFound = (front1 && HAZARD_BLOCKS.includes(front1.name)) || 
+                        (front2 && HAZARD_BLOCKS.includes(front2.name));
+
+    if (hazardFound) {
+      const hName = front1?.name || front2?.name;
+      safeChat(bot, `⚠️ Danger! Hazard (${hName}) saamne hai. Clutch-sealing...`);
+      const sealMat = bot.inventory.items().find(i => 
+        i.name.includes('cobble') || i.name.includes('netherrack') || i.name.includes('stone')
+      );
+      if (sealMat) {
+        await bot.equip(sealMat, 'hand');
+        await bot.placeBlock(bot.blockAt(curPos), new Vec3(1, 0, 0)).catch(() => {});
+      }
+      // Turn tunnel 90 degrees to bypass hazard
+      await bot.look(bot.entity.yaw + Math.PI / 2, 0);
+      return;
+    }
+
+    // 3. Scan for Ancient Debris in 16-block radius
+    const debris = bot.findBlock({
+      matching: bot.registry.blocksByName.ancient_debris?.id,
+      maxDistance: 16
+    });
+
+    if (debris) {
+      safeChat(bot, "💎 Ancient Debris spot hui! Tod raha hoon...");
+      try {
+        await equipBestTool(bot, debris);
+        await bot.collectBlock.collect(debris);
+        botState.netherMission.debrisGathered += 1;
+        safeChat(bot, `📦 Ancient Debris progress: ${botState.netherMission.debrisGathered}/${botState.netherMission.targetDebris}`);
+
+        if (botState.netherMission.debrisGathered >= botState.netherMission.targetDebris) {
+          clearInterval(miningInterval);
+          botState.netherMission.stage = 'SMELT_AND_UPGRADE';
+          safeChat(bot, "✅ Target pure ho gaye! Wapas portal par chal raha hoon...");
+          
+          if (botState.netherMission.portalCoords) {
+            bot.pathfinder.setGoal(new goals.GoalNear(
+              botState.netherMission.portalCoords.x,
+              botState.netherMission.portalCoords.y,
+              botState.netherMission.portalCoords.z,
+              2
+            ));
+          }
+        }
+      } catch (err) {
+        console.error("[DEBRIS HARVEST ERROR]", err.message);
+      }
+      return;
+    }
+
+    // 4. Default Tunneling Forward at Y:14
+    if (front1 && front1.name !== 'air') await bot.dig(front1).catch(() => {});
+    if (front2 && front2.name !== 'air') await bot.dig(front2).catch(() => {});
+    bot.setControlState('forward', true);
+    setTimeout(() => bot.setControlState('forward', false), 350);
+
+  }, 1800);
+}
+
+/**
+ * ============================================================================
  * MAIN DAEMON INITIALIZER & EVENT LOOP
  * ============================================================================
  */
@@ -1667,7 +1927,7 @@ if (require.main === module) {
       port: PORT_ENDPOINT,
       username: BOT_IDENTITY,
       checkTimeoutInterval: 120000,
-      version: false
+      version: false // Auto-detects server version & protocols
     });
 
     bot.loadPlugin(pathfinder);
@@ -1684,9 +1944,9 @@ if (require.main === module) {
 
       const mcData = require('minecraft-data')(bot.version);
       const defaultMove = new Movements(bot, mcData);
-      defaultMove.allowParkour = true;
+      defaultMove.allowParkour = false; // Prevents anti-cheat kicks
       defaultMove.canDig = true;
-      defaultMove.allow1by1towers = true;
+      defaultMove.allow1by1towers = false;
 
       bot.pathfinder.setMovements(defaultMove);
       bot.autoEat.options = {
@@ -1695,8 +1955,23 @@ if (require.main === module) {
         bannedFood: ['rotten_flesh', 'spider_eye', 'poisonous_potato']
       };
 
-      // Start Automatic Mob Defense immediately
+      // Launch perimeter sentinel
       startMobDefense(bot);
+    });
+
+    // Dimension Transition & Respawn Handler
+    bot.on('respawn', () => {
+      const dimension = bot.game.dimension;
+      console.log(`[DIMENSION SHIFT] Transitioned to: ${dimension}`);
+
+      if (dimension === 'minecraft:the_nether' && botState.netherMission.stage === 'PORTAL_BUILD') {
+        safeChat(bot, "🔥 Nether me safely pahunch gaya! Y:14 tunneling shuru.");
+        executeNetherMining(bot);
+      } else if (dimension === 'minecraft:overworld' && botState.netherMission.stage === 'SMELT_AND_UPGRADE') {
+        safeChat(bot, "🏡 Overworld safe return complete! Mission accomplished.");
+        botState.netherMission.active = false;
+        botState.netherMission.stage = 'IDLE';
+      }
     });
 
     bot.on('physicsTick', () => {
@@ -1707,7 +1982,7 @@ if (require.main === module) {
       }
     });
 
-    // Discord Synchronization
+    // Discord Synchronization Listener
     discordClient.on('messageCreate', async (msg) => {
       if (msg.author.bot || (DISCORD_CHANNEL_ID && msg.channel.id !== DISCORD_CHANNEL_ID)) return;
       const content = msg.content.trim();
@@ -1721,16 +1996,22 @@ if (require.main === module) {
         sortAndCleanInventory(bot);
         return msg.reply('🎒 Inventory sorted and trash filtered!');
       }
+      if (content.startsWith('!netherite')) {
+        startNetheritePipeline(bot);
+        return msg.reply('🔥 Netherite Autonomous Pipeline Initiated!');
+      }
       if (content.startsWith('!ai ')) {
         const reply = await askAiBrain(content.slice(4), { hp: bot.health, food: bot.food });
-        bot.chat(reply);
+        safeChat(bot, reply);
         return msg.reply(`🤖 **AI:** ${reply}`);
       }
       if (content === '!status') {
-        return msg.reply(`📊 HP: ${Math.round(bot.health)}/20 | Auto-Defense: ${botState.guardMode ? 'ON' : 'OFF'} | Smelter: ${botState.autoSmelt ? 'ON' : 'OFF'}`);
+        return msg.reply(
+          `📊 HP: ${Math.round(bot.health)}/20 | Auto-Defense: ${botState.guardMode ? 'ON' : 'OFF'} | Smelter: ${botState.autoSmelt ? 'ON' : 'OFF'} | Nether Mission: ${botState.netherMission.stage}`
+        );
       }
       if (content.startsWith('!say ')) {
-        bot.chat(content.slice(5));
+        safeChat(bot, content.slice(5));
         return msg.react('💬');
       }
     });
@@ -1746,7 +2027,7 @@ if (require.main === module) {
       const cleanMsg = message.trim();
       const lower = cleanMsg.toLowerCase();
 
-      // Extract command text
+      // Extract raw command
       const match = cleanMsg.match(/(?:<[^>]+>\s*|\[[^\]]+\]\s*|\w+:\s*)?(.*)/);
       const actualText = match ? match[1].trim() : cleanMsg;
       const args = actualText.split(/\s+/);
@@ -1756,7 +2037,7 @@ if (require.main === module) {
         stopAntiAfk(bot);
         const sender = actualText.split(' ')[0] || '';
         botState.followingPlayer = sender;
-        bot.chat("Aapke paas aa raha hoon!");
+        safeChat(bot, "Aapke paas aa raha hoon!");
       }
       else if (cmd === 'stop') {
         botState.followingPlayer = null;
@@ -1767,11 +2048,16 @@ if (require.main === module) {
         stopFishing();
         botState.autoFarm = false;
         clearTimeout(botState.farmingInterval);
+        botState.netherMission.active = false;
+        botState.netherMission.stage = 'IDLE';
 
         bot.clearControlStates();
         bot.pathfinder.stop();
         bot.collectBlock.cancelTask();
-        bot.chat("Sab stop kar diya!");
+        safeChat(bot, "Sab stop kar diya!");
+      }
+      else if (cmd === 'netherite') {
+        startNetheritePipeline(bot);
       }
       else if (cmd === 'craft' && args[1]) {
         const count = parseInt(args[2], 10) || 1;
@@ -1784,7 +2070,7 @@ if (require.main === module) {
         botState.autoSmelt = !botState.autoSmelt;
         if (botState.autoSmelt) runAutoSmelter(bot);
         else clearTimeout(botState.smeltingInterval);
-        bot.chat(`🔥 Auto Smelter: ${botState.autoSmelt ? 'ON' : 'OFF'}`);
+        safeChat(bot, `🔥 Auto Smelter: ${botState.autoSmelt ? 'ON' : 'OFF'}`);
       }
       else if (cmd === 'guard' || cmd === 'defense') {
         botState.guardMode = !botState.guardMode;
@@ -1793,7 +2079,7 @@ if (require.main === module) {
         } else {
           stopMobDefense();
         }
-        bot.chat(`🛡️ Auto Mob Defense: ${botState.guardMode ? 'ON' : 'OFF'}`);
+        safeChat(bot, `🛡️ Auto Mob Defense: ${botState.guardMode ? 'ON' : 'OFF'}`);
       }
       else if (cmd === 'afk') {
         botState.antiAfk ? stopAntiAfk(bot) : startAntiAfk(bot);
@@ -1808,7 +2094,7 @@ if (require.main === module) {
         } else {
           clearTimeout(botState.farmingInterval);
         }
-        bot.chat(`🌾 Auto Farm: ${botState.autoFarm ? 'ON' : 'OFF'}`);
+        safeChat(bot, `🌾 Auto Farm: ${botState.autoFarm ? 'ON' : 'OFF'}`);
       }
       else if (cmd === 'deposit' || cmd === 'chest') {
         dumpToChest(bot);
@@ -1826,30 +2112,30 @@ if (require.main === module) {
 
         const found = bot.findBlocks({ matching: targetIds, maxDistance: 32, count });
         if (!found.length) {
-          return bot.chat(`Aas-paas ${blockQuery} nahi mila.`);
+          return safeChat(bot, `Aas-paas ${blockQuery} nahi mila.`);
         }
 
-        bot.chat(`${found.length} ${blockQuery} tod raha hoon...`);
+        safeChat(bot, `${found.length} ${blockQuery} tod raha hoon...`);
         try {
           const targets = found.map(pos => bot.blockAt(pos));
           await equipBestTool(bot, targets[0]);
           await bot.collectBlock.collect(targets);
-          bot.chat("Mining complete!");
+          safeChat(bot, "Mining complete!");
         } catch (e) {
-          bot.chat(`Mining Error: ${e.message}`);
+          safeChat(bot, `Mining Error: ${e.message}`);
         }
       }
       else if (cmd === 'dropall') {
         for (const item of bot.inventory.items()) {
           try { await bot.tossStack(item); } catch (e) {}
         }
-        bot.chat("Sari inventory drop kar di!");
+        safeChat(bot, "Sari inventory drop kar di!");
       }
       else {
         if (lower.includes('nokar') || lower.includes('bot') || lower.startsWith('!ai')) {
           const prompt = actualText.replace(/^(nokar|bot|!ai)\s*/i, '');
           const reply = await askAiBrain(prompt || "hi", { hp: bot.health, food: bot.food });
-          bot.chat(reply);
+          safeChat(bot, reply);
         }
       }
     });
