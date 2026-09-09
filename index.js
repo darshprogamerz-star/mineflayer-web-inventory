@@ -1686,18 +1686,7 @@ function webInventoryPlugin(bot, customOptions = {}) {
       });
     }
 
-    io.emit('radar', {
-      bot: { x: bot.entity.position.x, y: bot.entity.position.y, z: bot.entity.position.z },
-      entities: nearby
-    });
-  }, 400);
-
-  bot.inventory.on('updateSlot', () => syncState());
-  bot.on('health', () => syncState());
-  server.listen(port, () => console.log(`[OPERATIONS SERVER ACTIVE] Port: ${port}`));
-}
-
-/**
+    /**
  * ============================================================================
  * MODULE: AUTONOMOUS NETHERITE PROGRESSION PIPELINE (CHAOS CUBED 26.2 READY)
  * FULL AUTONOMOUS FRAME BUILDER + STAIR-STEP Y:14 MINER + LAVA CLUTCH
@@ -1740,11 +1729,11 @@ async function buildAndIgnitePortal(bot) {
     const obsidian = bot.inventory.items().find(i => i.name === 'obsidian');
     if (!obsidian) throw new Error("Obsidian missing!");
 
-    // Base point in front of the bot
+    // Base placement anchor in front of the bot
     const base = bot.entity.position.floored().offset(2, 0, 0);
     botState.netherMission.portalCoords = base;
 
-    // 4x5 Vertical Portal Frame Coordinates (Minimal 10 Obsidian frame without corners)
+    // 4x5 Vertical Portal Frame Coordinates (Minimal 10 Obsidian)
     const frameOffsets = [
       // Bottom Row (2 blocks)
       new Vec3(1, 0, 0), new Vec3(2, 0, 0),
@@ -1761,14 +1750,12 @@ async function buildAndIgnitePortal(bot) {
       const current = bot.blockAt(targetPos);
 
       if (current && current.name !== 'obsidian') {
-        // Move near to place safely
         if (bot.entity.position.distanceTo(targetPos) > 4) {
           await bot.pathfinder.goto(new goals.GoalNear(targetPos.x, targetPos.y, targetPos.z, 3)).catch(() => {});
         }
 
         await bot.equip(obsidian, 'hand');
 
-        // Look for adjacent reference block to click on
         const neighbors = [
           targetPos.offset(0, -1, 0),
           targetPos.offset(1, 0, 0),
@@ -1776,34 +1763,31 @@ async function buildAndIgnitePortal(bot) {
           targetPos.offset(0, 1, 0)
         ];
 
-        let placed = false;
         for (const nPos of neighbors) {
           const neighborBlock = bot.blockAt(nPos);
           if (neighborBlock && neighborBlock.name !== 'air') {
             await bot.lookAt(targetPos);
             await bot.placeBlock(neighborBlock, targetPos.minus(nPos)).catch(() => {});
             await bot.waitForTicks(4);
-            placed = true;
             break;
           }
         }
       }
     }
 
-    // Step 2: Ignite the Bottom of the Frame
+    // Step 2: Reliable Ignition using placeBlock on the top face
     const flint = bot.inventory.items().find(i => i.name === 'flint_and_steel');
     if (flint) {
       await bot.equip(flint, 'hand');
       const bottomPortalBlock = bot.blockAt(base.offset(1, 0, 0));
       if (bottomPortalBlock) {
         await bot.lookAt(bottomPortalBlock.position);
-        // Ignite top face of the bottom obsidian block
-        await bot.activateBlock(bottomPortalBlock, new Vec3(0, 1, 0)).catch(() => {});
+        await bot.placeBlock(bottomPortalBlock, new Vec3(0, 1, 0)).catch(() => {});
         await bot.waitForTicks(10);
       }
     }
 
-    safeChat(bot, "🔥 Portal ignite ho gaya! Nether me enter ho raha hoon...");
+    safeChat(bot, "🔥 Portal ignite ho gaya! Entering portal frame...");
     bot.pathfinder.setGoal(new goals.GoalBlock(base.x + 1, base.y + 1, base.z));
 
   } catch (err) {
@@ -1820,7 +1804,6 @@ async function executeNetherMining(bot) {
   const diamondPick = bot.inventory.items().find(i => i.name.includes('pickaxe'));
   if (diamondPick) await bot.equip(diamondPick, 'hand');
 
-  // Strip-mine mining cycle
   const miningInterval = setInterval(async () => {
     if (botState.netherMission.stage !== 'NETHER_MINING') {
       return clearInterval(miningInterval);
@@ -1828,12 +1811,11 @@ async function executeNetherMining(bot) {
 
     const curPos = bot.entity.position.floored();
 
-    // 1. Safe Staircase Downward to Y:14 if high up
+    // 1. Safe Staircase Downward to Y:14
     if (curPos.y > 14) {
       const stepDownBlock = bot.blockAt(curPos.offset(1, -1, 0));
       const headBlock = bot.blockAt(curPos.offset(1, 0, 0));
       
-      // Dig step
       if (headBlock && headBlock.name !== 'air' && !HAZARD_BLOCKS.includes(headBlock.name)) {
         await bot.dig(headBlock).catch(() => {});
       }
@@ -1862,7 +1844,7 @@ async function executeNetherMining(bot) {
         await bot.equip(sealMat, 'hand');
         await bot.placeBlock(bot.blockAt(curPos), new Vec3(1, 0, 0)).catch(() => {});
       }
-      // Turn tunnel 90 degrees to bypass hazard
+      // Turn 90 degrees to bypass hazard wall
       await bot.look(bot.entity.yaw + Math.PI / 2, 0);
       return;
     }
@@ -1916,6 +1898,8 @@ async function executeNetherMining(bot) {
  * ============================================================================
  */
 if (require.main === module) {
+  let webServerStarted = false;
+
   function launchBot() {
     const HOST_ENDPOINT = process.argv[2] || 'DG_LAND502.aternos.me';
     const PORT_ENDPOINT = parseInt(process.argv[3], 10) || 62974;
@@ -1927,8 +1911,18 @@ if (require.main === module) {
       port: PORT_ENDPOINT,
       username: BOT_IDENTITY,
       checkTimeoutInterval: 120000,
-      version: false // Auto-detects server version & protocols
+      version: false
     });
+
+    // RENDER FIX: Launch Web UI immediately so Render binds port before 30s timeout
+    if (!webServerStarted) {
+      try {
+        webInventoryPlugin(bot, { port: WEB_PORT });
+        webServerStarted = true;
+      } catch (e) {
+        console.error('[DASHBOARD ERROR]', e.message);
+      }
+    }
 
     bot.loadPlugin(pathfinder);
     bot.loadPlugin(collectBlock);
@@ -1936,15 +1930,10 @@ if (require.main === module) {
 
     bot.once('spawn', () => {
       console.log(`[AGENT LIVE] ${bot.username} entered the server.`);
-      try {
-        webInventoryPlugin(bot, { port: WEB_PORT });
-      } catch (e) {
-        console.error('[DASHBOARD ERROR]', e.message);
-      }
 
       const mcData = require('minecraft-data')(bot.version);
       const defaultMove = new Movements(bot, mcData);
-      defaultMove.allowParkour = false; // Prevents anti-cheat kicks
+      defaultMove.allowParkour = false;
       defaultMove.canDig = true;
       defaultMove.allow1by1towers = false;
 
@@ -1955,7 +1944,6 @@ if (require.main === module) {
         bannedFood: ['rotten_flesh', 'spider_eye', 'poisonous_potato']
       };
 
-      // Launch perimeter sentinel
       startMobDefense(bot);
     });
 
@@ -2027,7 +2015,6 @@ if (require.main === module) {
       const cleanMsg = message.trim();
       const lower = cleanMsg.toLowerCase();
 
-      // Extract raw command
       const match = cleanMsg.match(/(?:<[^>]+>\s*|\[[^\]]+\]\s*|\w+:\s*)?(.*)/);
       const actualText = match ? match[1].trim() : cleanMsg;
       const args = actualText.split(/\s+/);
@@ -2152,3 +2139,7 @@ if (require.main === module) {
 
   launchBot();
 }
+
+                    
+
+      
