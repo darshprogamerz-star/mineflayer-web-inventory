@@ -45,6 +45,7 @@ server.listen(WEB_PORT, '0.0.0.0', () => {
 global.bot = null;
 
 const botState = {
+  botEnabled: true
   autoEat: true,
   autoFarm: false,
   farmingInterval: null,
