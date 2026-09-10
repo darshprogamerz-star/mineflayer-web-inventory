@@ -114,7 +114,7 @@ async function askAiBrain(promptText, botStatus) {
   }
 
   const cleanKey = apiKey.trim();
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${cleanKey}`;
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${cleanKey}`;
 
   try {
     const userPrompt = `You are 'Nokar', an intelligent, humorous, and loyal Minecraft companion. Reply strictly in short natural Hinglish under 20 words. Current Status -> Health: ${botStatus.hp}/20, Food: ${botStatus.food}/20. User says: "${promptText}"`;
