@@ -45,7 +45,7 @@ server.listen(WEB_PORT, '0.0.0.0', () => {
 global.bot = null;
 
 const botState = {
-  botEnabled: true
+  botEnabled: true,
   autoEat: true,
   autoFarm: false,
   farmingInterval: null,
@@ -75,7 +75,7 @@ const botState = {
   totalCrafted: 0,
   totalKilled: 0,
   reconnectAttempts: 0,
-  maxReconnectAttempts: 10
+  maxReconnectAttempts: 20
 };
 
 // ==================== HOSTILE MOBS ====================
@@ -115,35 +115,48 @@ async function askAiBrain(promptText, botStatus) {
   }
 
   const cleanKey = apiKey.trim();
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${cleanKey}`;
 
-  try {
-    const userPrompt = `You are 'Nokar', an intelligent, humorous, and loyal Minecraft companion. Reply strictly in short natural Hinglish under 20 words. Current Status -> Health: ${botStatus.hp}/20, Food: ${botStatus.food}/20. User says: "${promptText}"`;
+  // Multiple models try karo (fallback mechanism)
+  const MODEL_FALLBACKS = [
+    'gemini-3.5-flash',
+    'gemini-3.6-flash',
+    'gemini-2.5-flash',
+    'gemini-flash-latest',
+    'gemini-2.5-flash-lite'
+  ];
 
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: userPrompt }] }]
-      })
-    });
+  const userPrompt = `You are 'Nokar', an intelligent, humorous, and loyal Minecraft companion. Reply strictly in short natural Hinglish under 20 words. Current Status -> Health: ${botStatus.hp}/20, Food: ${botStatus.food}/20. User says: "${promptText}"`;
 
-    const data = await response.json();
+  for (const model of MODEL_FALLBACKS) {
+    try {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${cleanKey}`;
 
-    if (data.error) {
-      console.error('[GEMINI API ERROR]', data.error.message);
-      return `Google Error: ${data.error.message.substring(0, 30)}`;
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: userPrompt }] }]
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.error) {
+        console.log(`[AI] Model ${model} failed: ${data.error.message}`);
+        continue;
+      }
+
+      if (data.candidates && data.candidates[0]?.content?.parts?.[0]?.text) {
+        console.log(`[AI] Success with model: ${model}`);
+        return data.candidates[0].content.parts[0].text.trim();
+      }
+    } catch (err) {
+      console.log(`[AI] Model ${model} network error: ${err.message}`);
+      continue;
     }
-
-    if (data.candidates && data.candidates[0]?.content?.parts?.[0]?.text) {
-      return data.candidates[0].content.parts[0].text.trim();
-    }
-
-    return "Haan boss, sun raha hoon bolo!";
-  } catch (err) {
-    console.error('[GEMINI NETWORK ERROR]', err.message);
-    return `Net Error: ${err.message.substring(0, 20)}`;
   }
+
+  return "Boss, koi bhi AI model kaam nahi kar raha!";
 }
 
 // ==================== DISCORD ====================
@@ -589,7 +602,7 @@ function startAntiAfk(bot) {
     } catch (e) {
       console.error('[AFK ERROR]', e.message);
     }
-  }, 4500);
+  }, 2000);
 }
 
 function stopAntiAfk() {
@@ -765,7 +778,7 @@ async function dumpToChest(bot) {
 
 // ⬇️⬇️⬇️ PART 2 YAHAN SE CONTINUE HOGA ⬇️⬇️⬇️
 // ============================================================================
-// ============ AUTONOMOUS NETHERITE PIPELINE (PORTAL + ANCIENT DEBRIS) =======
+// ============ AUTONOMOUS NETHERITE PIPELINE =================================
 // ============================================================================
 async function startNetheritePipeline(bot) {
   if (botState.netheritePipeline) {
@@ -775,49 +788,31 @@ async function startNetheritePipeline(bot) {
 
   botState.netheritePipeline = true;
   botState.portalBuilding = true;
-  bot.chat("🔥 Netherite Pipeline START! Portal + Debris Mining shuru...");
+  bot.chat("🔥 Netherite Pipeline START!");
 
   const mcData = require('minecraft-data')(bot.version);
 
-  // ---------- STEP 1: Check Obsidian ----------
   let obsidianItems = bot.inventory.items().filter(i => i.name === 'obsidian');
   let obsidianCount = obsidianItems.reduce((acc, cur) => acc + cur.count, 0);
 
   if (obsidianCount < 10) {
-    bot.chat("❌ Obsidian kam hai! 10 obsidian chahiye portal ke liye.");
+    bot.chat("❌ Obsidian kam hai! 10 chahiye.");
     botState.netheritePipeline = false;
     botState.portalBuilding = false;
     return;
   }
 
-  // ---------- STEP 2: Check Flint and Steel ----------
   let flintSteel = bot.inventory.items().find(i => i.name === 'flint_and_steel');
   if (!flintSteel) {
-    bot.chat("❌ Flint and Steel chahiye portal ignite karne ke liye!");
+    bot.chat("❌ Flint and Steel chahiye!");
     botState.netheritePipeline = false;
     botState.portalBuilding = false;
     return;
   }
 
-  // ---------- STEP 3: Build Portal Frame (4x5 Vertical) ----------
   bot.chat("🏗️ Portal frame bana raha hoon...");
   const portalBase = bot.entity.position.floored().offset(2, 0, 2);
 
-  // Clear area first (remove grass, etc.)
-  for (let y = 0; y < 5; y++) {
-    for (let x = 0; x < 4; x++) {
-      const clearPos = portalBase.offset(x, y, 0);
-      const clearBlock = bot.blockAt(clearPos);
-      if (clearBlock && clearBlock.name !== 'air' && clearBlock.name !== 'obsidian') {
-        try {
-          await bot.dig(clearBlock);
-          await bot.waitForTicks(2);
-        } catch (e) {}
-      }
-    }
-  }
-
-  // Build frame blocks
   const portalBlocks = [];
   for (let y = 0; y < 5; y++) {
     for (let x = 0; x < 4; x++) {
@@ -859,30 +854,24 @@ async function startNetheritePipeline(bot) {
     }
   }
 
-  // ---------- STEP 4: Ignite Portal (Top-Face Reliable) ----------
   bot.chat("🔥 Portal ignite kar raha hoon...");
   await bot.equip(flintSteel, 'hand');
+  const portalCenter = portalBase.offset(1, 1, 0);
+  const refBlock = bot.blockAt(portalCenter.offset(0, -1, 0));
 
-  // Ignite from top face (most reliable)
-  const ignitePos = portalBase.offset(0, 4, 0);
-  const igniteRef = bot.blockAt(ignitePos);
-  const igniteTarget = portalBase.offset(1, 1, 0);
-
-  if (igniteRef && igniteRef.name === 'obsidian') {
+  if (refBlock) {
     try {
-      await bot.lookAt(igniteTarget);
-      await bot.placeBlock(igniteRef, new Vec3(0, -1, 0)).catch(() => {});
+      await bot.lookAt(portalCenter);
+      await bot.placeBlock(refBlock, new Vec3(0, 1, 0)).catch(() => {});
       await bot.waitForTicks(20);
     } catch (e) {
       console.error('[PORTAL IGNITE ERROR]', e.message);
     }
   }
 
-  // ---------- STEP 5: Wait for Portal Activation ----------
   bot.chat("⏳ Portal activate hone ka wait...");
   await bot.waitForTicks(60);
 
-  // ---------- STEP 6: Enter Portal ----------
   const portalBlock = bot.findBlock({
     matching: mcData.blocksByName.nether_portal?.id,
     maxDistance: 5
@@ -900,7 +889,6 @@ async function startNetheritePipeline(bot) {
       await bot.waitForTicks(120);
       botState.isInNether = true;
       botState.portalLocation = bot.entity.position.clone();
-      bot.chat("✅ Nether me enter ho gaya!");
     } catch (e) {
       console.error('[PORTAL ENTER ERROR]', e.message);
     }
@@ -908,9 +896,8 @@ async function startNetheritePipeline(bot) {
 
   botState.portalBuilding = false;
 
-  // ---------- STEP 7: Start Ancient Debris Mining at Y:14 ----------
   if (botState.isInNether) {
-    bot.chat("⛏️ Y:14 par tunnel karke Ancient Debris mine kar raha hoon...");
+    bot.chat("⛏️ Y:14 par Ancient Debris mine kar raha hoon...");
     botState.netherTunnel = true;
     await mineAncientDebris(bot);
   } else {
@@ -920,7 +907,7 @@ async function startNetheritePipeline(bot) {
 }
 
 // ============================================================================
-// ============ ANCIENT DEBRIS MINING WITH LAVA PROTECTION ====================
+// ============ ANCIENT DEBRIS MINING ========================================
 // ============================================================================
 async function mineAncientDebris(bot) {
   if (!botState.netheritePipeline || !botState.netherTunnel) return;
@@ -928,7 +915,6 @@ async function mineAncientDebris(bot) {
   const mcData = require('minecraft-data')(bot.version);
   const targetY = 14;
 
-  // ---------- Helper: Seal Lava ----------
   async function checkAndSealLava() {
     if (botState.lavaSealing) return;
 
@@ -939,7 +925,7 @@ async function mineAncientDebris(bot) {
 
     if (lavaBlock) {
       botState.lavaSealing = true;
-      bot.chat("⚠️ Lava detect hua! Seal kar raha hoon...");
+      bot.chat("⚠️ Lava detect! Seal kar raha hoon...");
 
       const sealBlock = bot.inventory.items().find(i =>
         i.name.includes('cobble') || i.name.includes('stone') ||
@@ -957,10 +943,8 @@ async function mineAncientDebris(bot) {
     }
   }
 
-  // ---------- Helper: Ensure Y Level ----------
   async function ensureYLevel() {
     if (Math.abs(bot.entity.position.y - targetY) > 2) {
-      bot.chat(`📏 Y:${targetY} par ja raha hoon...`);
       const targetPos = bot.entity.position.clone();
       targetPos.y = targetY;
       await bot.pathfinder.goto(new goals.GoalNear(
@@ -969,14 +953,12 @@ async function mineAncientDebris(bot) {
     }
   }
 
-  // ---------- Mining Loop ----------
   let miningIterations = 0;
   const maxIterations = 200;
 
   while (botState.netheritePipeline && botState.netherTunnel && miningIterations < maxIterations) {
     try {
       miningIterations++;
-
       await checkAndSealLava();
       await ensureYLevel();
 
@@ -996,17 +978,16 @@ async function mineAncientDebris(bot) {
           await bot.equip(pickaxe, 'hand');
           try {
             await bot.collectBlock.collect(targets);
-            bot.chat("💎 Ancient Debris mila aur mine kar liya!");
+            bot.chat("💎 Ancient Debris mila!");
             botState.totalMined += debrisBlocks.length;
           } catch (e) {
-            console.error('[DEBRIS MINING ERROR]', e.message);
+            console.error('[DEBRIS ERROR]', e.message);
           }
         } else {
-          bot.chat("❌ Diamond ya Netherite pickaxe chahiye!");
+          bot.chat("❌ Diamond pickaxe chahiye!");
           break;
         }
       } else {
-        // Stair-step tunnel
         const direction = bot.entity.yaw;
         const targetPos = bot.entity.position.offset(
           Math.sin(direction) * 3, 0, Math.cos(direction) * 3
@@ -1026,9 +1007,7 @@ async function mineAncientDebris(bot) {
             try {
               await bot.dig(targetBlock);
               await bot.waitForTicks(2);
-            } catch (e) {
-              console.error('[TUNNEL DIG ERROR]', e.message);
-            }
+            } catch (e) {}
           }
         } else {
           bot.setControlState('forward', true);
@@ -1039,31 +1018,23 @@ async function mineAncientDebris(bot) {
 
       const emptySlots = bot.inventory.emptySlotCount();
       if (emptySlots < 5) {
-        bot.chat("⚠️ Inventory full! Netherite pipeline pause.");
+        bot.chat("⚠️ Inventory full!");
         break;
       }
 
       await bot.waitForTicks(5);
     } catch (e) {
-      console.error('[NETHER MINING ERROR]', e.message);
+      console.error('[NETHER ERROR]', e.message);
       await bot.waitForTicks(20);
     }
   }
 
-  // ---------- Return to Portal ----------
   if (botState.isInNether && botState.portalLocation) {
-    bot.chat("🏠 Portal wapas ja raha hoon...");
     try {
       await bot.pathfinder.goto(new goals.GoalNear(
-        botState.portalLocation.x,
-        botState.portalLocation.y,
-        botState.portalLocation.z,
-        1
+        botState.portalLocation.x, botState.portalLocation.y, botState.portalLocation.z, 1
       ));
-      bot.chat("✅ Portal par pahunch gaya!");
-    } catch (e) {
-      console.error('[PORTAL RETURN ERROR]', e.message);
-    }
+    } catch (e) {}
   }
 
   botState.netherTunnel = false;
@@ -1073,7 +1044,7 @@ async function mineAncientDebris(bot) {
 }
 
 // ============================================================================
-// ============ WEB DASHBOARD HTML (FULL UI) =================================
+// ============ WEB DASHBOARD HTML ===========================================
 // ============================================================================
 function getDashboardHTML() {
   return `
@@ -1117,11 +1088,7 @@ function getDashboardHTML() {
     align-items: center;
     gap: 8px;
   }
-  .chat-box {
-    display: flex;
-    gap: 6px;
-    margin-bottom: 12px;
-  }
+  .chat-box { display: flex; gap: 6px; margin-bottom: 12px; }
   .chat-input {
     flex: 1;
     padding: 10px 12px;
@@ -1172,12 +1139,7 @@ function getDashboardHTML() {
     cursor: pointer;
   }
   .ctrl-btn:active { background: #0284c7; transform: scale(0.95); }
-  .manual-actions {
-    display: flex;
-    gap: 6px;
-    width: 100%;
-    max-width: 270px;
-  }
+  .manual-actions { display: flex; gap: 6px; width: 100%; max-width: 270px; }
   .manual-btn {
     padding: 9px;
     border-radius: 8px;
@@ -1260,7 +1222,6 @@ function getDashboardHTML() {
     font-weight: bold;
     cursor: pointer;
   }
-  .radar-filter-btn:active { transform: scale(0.98); }
   .radar-legend {
     display: flex;
     flex-wrap: wrap;
@@ -1361,6 +1322,28 @@ function getDashboardHTML() {
     border-radius: 2px;
     padding: 0 2px;
   }
+  .bot-power-btn {
+    width: 100%;
+    padding: 14px;
+    font-size: 15px;
+    font-weight: 900;
+    border-radius: 10px;
+    border: none;
+    color: white;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    grid-column: span 2;
+    text-shadow: 0 0 10px rgba(255,255,255,0.5);
+  }
+  .bot-power-btn.online {
+    background: linear-gradient(135deg, #16a34a, #22c55e);
+    box-shadow: 0 0 20px rgba(34, 197, 94, 0.5);
+  }
+  .bot-power-btn.offline {
+    background: linear-gradient(135deg, #991b1b, #dc2626);
+    box-shadow: 0 0 20px rgba(220, 38, 38, 0.5);
+  }
+  .bot-power-btn:active { transform: scale(0.98); }
 </style>
 </head>
 <body>
@@ -1408,6 +1391,15 @@ function getDashboardHTML() {
     <button class="act-btn btn-stop" onclick="send('stop')">🛑 Stop All</button>
   </div>
 
+  <div class="section-title">⚡ Bot Control</div>
+  <div class="action-grid">
+    <button class="bot-power-btn online" id="botPowerBtn" onclick="toggleBotPower()">
+      🟢 Bot: ONLINE
+    </button>
+    <button class="act-btn" onclick="send('force_reconnect')" style="background:#dc2626;">🔄 Force Reconnect</button>
+    <button class="act-btn" onclick="send('disconnect_bot')" style="background:#991b1b;">🚪 Disconnect Bot</button>
+  </div>
+
   <div class="bot-pos-bar">
     <span>📍 My Position:</span>
     <span id="botCoords">X: 0 | Y: 0 | Z: 0</span>
@@ -1451,6 +1443,7 @@ function getDashboardHTML() {
   const ctx = canvas.getContext('2d');
   const cX = 140, cY = 140, scale = 5.5;
   let showOresAndChests = true;
+  let botPowerState = true;
 
   const main = document.getElementById('mainGrid');
   const hotbar = document.getElementById('hotbarGrid');
@@ -1467,6 +1460,21 @@ function getDashboardHTML() {
   function startMove(dir) { socket.emit('control_move', { direction: dir, state: true }); }
   function stopMove(dir) { socket.emit('control_move', { direction: dir, state: false }); }
   function jump() { socket.emit('control_jump'); }
+
+  function toggleBotPower() {
+    botPowerState = !botPowerState;
+    const btn = document.getElementById('botPowerBtn');
+
+    if (botPowerState) {
+      btn.innerText = '🟢 Bot: ONLINE';
+      btn.className = 'bot-power-btn online';
+      send('bot_power_on');
+    } else {
+      btn.innerText = '🔴 Bot: OFFLINE';
+      btn.className = 'bot-power-btn offline';
+      send('bot_power_off');
+    }
+  }
 
   function toggleXray() {
     showOresAndChests = !showOresAndChests;
@@ -1492,6 +1500,21 @@ function getDashboardHTML() {
   }
   document.getElementById('chatMsg').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') sendChat();
+  });
+
+  socket.on('bot_status', (data) => {
+    const btn = document.getElementById('botPowerBtn');
+    if (!btn) return;
+
+    if (data.online) {
+      botPowerState = true;
+      btn.innerText = '🟢 Bot: ONLINE';
+      btn.className = 'bot-power-btn online';
+    } else {
+      botPowerState = false;
+      btn.innerText = '🔴 Bot: OFFLINE';
+      btn.className = 'bot-power-btn offline';
+    }
   });
 
   socket.on('radar', data => {
@@ -1550,13 +1573,6 @@ function getDashboardHTML() {
         const radius = (e.type === 'player' || e.type === 'mob') ? 5 : 3.5;
         ctx.arc(pX, pY, radius, 0, Math.PI * 2);
         ctx.fill();
-        if (e.type === 'diamond' || e.type === 'debris' || e.type === 'player') {
-          ctx.strokeStyle = color;
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.arc(pX, pY, radius + 2, 0, Math.PI * 2);
-          ctx.stroke();
-        }
       }
 
       let exactCoords = '[X:' + Math.round(e.x) + ' Y:' + (e.y !== undefined ? Math.round(e.y) : '?') + ' Z:' + Math.round(e.z) + ']';
@@ -1615,9 +1631,6 @@ function getDashboardHTML() {
   `;
 }
 
-// ============================================================================
-// ============ WEB DASHBOARD ROUTE ==========================================
-// ============================================================================
 app.get('/dashboard', (req, res) => {
   res.send(getDashboardHTML());
 });
@@ -1627,12 +1640,9 @@ app.get('/dashboard', (req, res) => {
 // ============ WEB DASHBOARD SOCKET.IO + RADAR ==============================
 // ============================================================================
 function webInventoryPlugin(bot) {
-
-  // ---------- Socket.IO Connection ----------
   io.on('connection', (socket) => {
     console.log('[DASHBOARD] Client connected:', socket.id);
 
-    // Initial sync
     const syncState = () => {
       if (!bot?.entity) return;
       const items = bot.inventory.slots.map((item, index) =>
@@ -1643,7 +1653,19 @@ function webInventoryPlugin(bot) {
 
     syncState();
 
-    // ---------- Chat Handler ----------
+    // ⚡ BOT STATUS BROADCAST
+    socket.emit('bot_status', {
+      online: bot && bot.entity ? true : false
+    });
+
+    const botStatusInterval = setInterval(() => {
+      if (socket.connected) {
+        socket.emit('bot_status', {
+          online: bot && bot.entity ? true : false
+        });
+      }
+    }, 3000);
+
     socket.on('send_chat', async (data) => {
       if (data?.message && bot?.entity) {
         const msg = data.message.trim();
@@ -1663,7 +1685,6 @@ function webInventoryPlugin(bot) {
       }
     });
 
-    // ---------- Movement Controls ----------
     socket.on('control_move', data => {
       if (bot?.entity) bot.setControlState(data.direction, !!data.state);
     });
@@ -1674,7 +1695,6 @@ function webInventoryPlugin(bot) {
       setTimeout(() => bot.setControlState('jump', false), 350);
     });
 
-    // ---------- Inventory Slot Actions ----------
     socket.on('equip_slot', async data => {
       if (!bot?.entity) return;
       const item = bot.inventory.slots[data.slot];
@@ -1691,7 +1711,6 @@ function webInventoryPlugin(bot) {
       }
     });
 
-    // ---------- Manual Combat Actions ----------
     socket.on('manual_action', async type => {
       if (!bot?.entity) return;
 
@@ -1721,20 +1740,19 @@ function webInventoryPlugin(bot) {
       }
     });
 
-    // ---------- Disconnect ----------
     socket.on('disconnect', () => {
+      clearInterval(botStatusInterval);
       if (bot?.entity) bot.clearControlStates();
       console.log('[DASHBOARD] Client disconnected:', socket.id);
     });
   });
 
-  // ---------- RADAR SCANNER (Live Updates) ----------
+  // ---------- RADAR SCANNER ----------
   setInterval(() => {
     if (!bot?.entity) return;
     const nearby = [];
     const mcData = require('minecraft-data')(bot.version);
 
-    // 1. Scan Players & Mobs
     for (const id in bot.entities) {
       const e = bot.entities[id];
       if (!e || e === bot.entity) continue;
@@ -1751,7 +1769,6 @@ function webInventoryPlugin(bot) {
       }
     }
 
-    // 2. Scan Containers (Chests, Barrels)
     if (mcData) {
       const containerIds = [
         mcData.blocksByName.chest?.id,
@@ -1770,7 +1787,6 @@ function webInventoryPlugin(bot) {
         }
       });
 
-      // 3. Scan Ores (With Vein Clustering)
       const oreList = [
         { key: 'diamond', name: 'Diamond Ore', ids: [mcData.blocksByName.diamond_ore?.id, mcData.blocksByName.deepslate_diamond_ore?.id] },
         { key: 'debris', name: 'Ancient Debris', ids: [mcData.blocksByName.ancient_debris?.id] },
@@ -1804,20 +1820,17 @@ function webInventoryPlugin(bot) {
       });
     }
 
-    // Emit radar data
     io.emit('radar', {
       bot: { x: bot.entity.position.x, y: bot.entity.position.y, z: bot.entity.position.z },
       entities: nearby
     });
 
-    // Emit inventory sync
     const items = bot.inventory.slots.map((item, index) =>
       item ? { slot: index, name: item.name, count: item.count } : null
     ).filter(Boolean);
     io.emit('sync', { hp: bot.health, food: bot.food, items });
   }, 500);
 
-  // ---------- Inventory Update Listeners ----------
   bot.inventory.on('updateSlot', () => {
     if (!bot?.entity) return;
     const items = bot.inventory.slots.map((item, index) =>
@@ -1838,75 +1851,118 @@ function webInventoryPlugin(bot) {
 }
 
 // ============================================================================
-// ============ API ENDPOINTS (Dashboard Buttons) ============================
+// ============ API ENDPOINTS ================================================
 // ============================================================================
 app.post('/api/action', async (req, res) => {
   const act = req.body.action;
   const bot = global.bot;
 
+  // ⚡ BOT POWER CONTROLS - Ye bot connected hone par bhi kaam karein
+  if (act === 'bot_power_off') {
+    botState.botEnabled = false;
+    console.log('[BOT CONTROL] User ne bot OFF kiya');
+
+    if (bot) {
+      try {
+        bot.chat("😴 Bot sleep mode me ja raha hoon...");
+        setTimeout(() => bot.quit('Dashboard se disconnect'), 1500);
+      } catch (e) {
+        console.error('[BOT OFF ERROR]', e.message);
+      }
+    }
+    return res.json({ success: true, state: 'offline' });
+  }
+
+  if (act === 'bot_power_on') {
+    botState.botEnabled = true;
+    console.log('[BOT CONTROL] User ne bot ON kiya');
+
+    if (!bot || !bot.entity) {
+      setTimeout(() => launchBot(), 1000);
+    }
+    return res.json({ success: true, state: 'online' });
+  }
+
+  if (act === 'force_reconnect') {
+    console.log('[BOT CONTROL] Force reconnect triggered');
+    botState.botEnabled = true;
+
+    if (bot) {
+      try {
+        bot.quit('Force reconnect');
+      } catch (e) {}
+    }
+
+    setTimeout(() => launchBot(), 3000);
+    return res.json({ success: true });
+  }
+
+  if (act === 'disconnect_bot') {
+    console.log('[BOT CONTROL] Manual disconnect');
+    botState.botEnabled = false;
+
+    if (bot) {
+      try {
+        bot.chat("🚪 Dashboard se disconnect");
+        setTimeout(() => bot.quit('Manual disconnect'), 1500);
+      } catch (e) {}
+    }
+    return res.json({ success: true });
+  }
+
+  // ⚡ Baaki actions ke liye bot connected hona zaroori hai
   if (!bot?.entity) {
     return res.json({ success: false, error: 'Bot not connected' });
   }
 
   switch (act) {
-    // ---------- Auto Defense ----------
     case 'toggle_guard':
       botState.guardMode = !botState.guardMode;
       if (botState.guardMode) startMobDefense(bot);
       else stopMobDefense();
       return res.json({ success: true, state: botState.guardMode });
 
-    // ---------- Anti-AFK ----------
     case 'toggle_afk':
       botState.antiAfk ? stopAntiAfk() : startAntiAfk(bot);
       return res.json({ success: true, state: botState.antiAfk });
 
-    // ---------- Fishing ----------
     case 'toggle_fish':
       botState.isFishing ? stopFishing() : startFishing(bot);
       return res.json({ success: true, state: botState.isFishing });
 
-    // ---------- Auto Farm ----------
     case 'toggle_farm':
       botState.autoFarm = !botState.autoFarm;
       if (botState.autoFarm) runFarmLoop(bot);
       else clearTimeout(botState.farmingInterval);
       return res.json({ success: true, state: botState.autoFarm });
 
-    // ---------- Auto Smelter ----------
     case 'toggle_smelt':
       botState.autoSmelt = !botState.autoSmelt;
       if (botState.autoSmelt) runAutoSmelter(bot);
       else clearTimeout(botState.smeltingInterval);
       return res.json({ success: true, state: botState.autoSmelt });
 
-    // ---------- Netherite Pipeline ----------
     case 'netherite_pipeline':
       startNetheritePipeline(bot);
       return res.json({ success: true });
 
-    // ---------- Sort Inventory ----------
     case 'sort_inv':
       sortAndCleanInventory(bot);
       return res.json({ success: true });
 
-    // ---------- Build House ----------
     case 'build_house':
       executeHouseBuild(bot);
       return res.json({ success: true });
 
-    // ---------- Dump to Chest ----------
     case 'dump_chest':
       dumpToChest(bot);
       return res.json({ success: true });
 
-    // ---------- Drop Held Item ----------
     case 'drop_hand':
       const held = bot.heldItem;
       if (held) bot.tossStack(held).catch(() => {});
       return res.json({ success: true });
 
-    // ---------- STOP ALL ----------
     case 'stop':
       botState.followingPlayer = null;
       botState.isBusyCrafting = false;
@@ -1932,12 +1988,18 @@ app.post('/api/action', async (req, res) => {
 });
 
 // ============================================================================
-// ============ BOT LAUNCHER (Main Daemon) ===================================
+// ============ BOT LAUNCHER =================================================
 // ============================================================================
 function launchBot() {
-  const HOST_ENDPOINT = process.argv[2] || 'DG_LAND502.aternos.me';
-  const PORT_ENDPOINT = parseInt(process.argv[3], 10) || 62974;
-  const BOT_IDENTITY = process.argv[4] || 'Nokar';
+  // ⚡ IMPORTANT: Agar user ne bot OFF kiya hai, to launch mat karo
+  if (botState.botEnabled === false) {
+    console.log('[BOT CONTROL] Bot OFF hai, launch skip kar raha hoon');
+    return;
+  }
+
+  const HOST_ENDPOINT = process.env.HOST || process.argv[2] || 'DG_LAND502.aternos.me';
+  const PORT_ENDPOINT = parseInt(process.env.PORT_MC || process.argv[3], 10) || 62974;
+  const BOT_IDENTITY = process.env.BOT_NAME || process.argv[4] || 'Nokar';
 
   console.log(`[CONNECTING] ${HOST_ENDPOINT}:${PORT_ENDPOINT} as ${BOT_IDENTITY}`);
   console.log(`[RECONNECT ATTEMPT] ${botState.reconnectAttempts + 1}/${botState.maxReconnectAttempts}`);
@@ -1946,31 +2008,36 @@ function launchBot() {
     host: HOST_ENDPOINT,
     port: PORT_ENDPOINT,
     username: BOT_IDENTITY,
-    checkTimeoutInterval: 60000,
-    connectTimeout: 30000,
+    checkTimeoutInterval: 300000,
+    connectTimeout: 60000,
+    keepAlive: true,
     version: false
   });
 
   global.bot = bot;
 
-  // ---------- Load Plugins ----------
   bot.loadPlugin(pathfinder);
   bot.loadPlugin(collectBlock);
   bot.loadPlugin(autoEat);
 
-  // ---------- On Spawn ----------
   bot.once('spawn', () => {
     console.log(`[BOT ONLINE] ${bot.username} entered the server.`);
     botState.reconnectAttempts = 0;
 
-    // Start web dashboard
+    // ⚡ IMMEDIATE Anti-AFK
+    setTimeout(() => {
+      if (!botState.antiAfk) {
+        startAntiAfk(bot);
+        console.log('[ANTI-AFK] Started!');
+      }
+    }, 2000);
+
     try {
       webInventoryPlugin(bot);
     } catch (e) {
       console.error('[DASHBOARD ERROR]', e.message);
     }
 
-    // Configure pathfinder
     const mcData = require('minecraft-data')(bot.version);
     const defaultMove = new Movements(bot, mcData);
     defaultMove.allowParkour = true;
@@ -1978,24 +2045,19 @@ function launchBot() {
     defaultMove.allow1by1towers = true;
 
     bot.pathfinder.setMovements(defaultMove);
-
-    // Configure auto-eat
     bot.autoEat.options = {
       priority: 'foodPoints',
       startAt: 14,
       bannedFood: ['rotten_flesh', 'spider_eye', 'poisonous_potato']
     };
 
-    // Start auto mob defense
     startMobDefense(bot);
 
-    // Announce to Discord
     if (discordChannel) {
       discordChannel.send(`🟢 **${bot.username} online!**`).catch(() => {});
     }
   });
 
-  // ---------- Follow Player Logic ----------
   bot.on('physicsTick', () => {
     if (!botState.followingPlayer || botState.isBusyCrafting || !bot?.entity) return;
     const target = bot.players[botState.followingPlayer]?.entity;
@@ -2004,9 +2066,7 @@ function launchBot() {
     }
   });
 
-  // ============================================================================
-  // ============ DISCORD MESSAGE HANDLER ======================================
-  // ============================================================================
+  // ---------- DISCORD HANDLER ----------
   discordClient.on('messageCreate', async (msg) => {
     if (msg.author.bot) return;
     if (DISCORD_CHANNEL_ID && msg.channel.id !== DISCORD_CHANNEL_ID) return;
@@ -2014,40 +2074,29 @@ function launchBot() {
 
     const content = msg.content.trim();
 
-    // !craft <item> [count]
     if (content.startsWith('!craft ')) {
       const parts = content.split(' ');
       smartGatherAndCraft(bot, parts[1], parseInt(parts[2]) || 1);
-      return msg.reply(`🔨 Crafting started for ${parts[1]}`);
+      return msg.reply(`🔨 Crafting ${parts[1]}`);
     }
-
-    // !sort
     if (content === '!sort') {
       sortAndCleanInventory(bot);
-      return msg.reply('🎒 Inventory sorted & trash filtered!');
+      return msg.reply('🎒 Inventory sorted!');
     }
-
-    // !netherite
     if (content === '!netherite') {
       startNetheritePipeline(bot);
       return msg.reply('💎 Netherite pipeline started!');
     }
-
-    // !mine <block> [count]
     if (content.startsWith('!mine ')) {
       const parts = content.split(' ');
       mineBlocks(bot, parts[1], parseInt(parts[2]) || 1);
       return msg.reply(`⛏️ Mining ${parts[1]}...`);
     }
-
-    // !ai <message>
     if (content.startsWith('!ai ')) {
       const reply = await askAiBrain(content.slice(4), { hp: bot.health, food: bot.food });
       bot.chat(reply);
       return msg.reply(`🤖 **AI:** ${reply}`);
     }
-
-    // !status
     if (content === '!status') {
       return msg.reply(
         `📊 **Bot Status**\n` +
@@ -2059,14 +2108,10 @@ function launchBot() {
         `📍 Pos: ${Math.round(bot.entity.position.x)}, ${Math.round(bot.entity.position.y)}, ${Math.round(bot.entity.position.z)}`
       );
     }
-
-    // !say <message>
     if (content.startsWith('!say ')) {
       bot.chat(content.slice(5));
       return msg.react('💬');
     }
-
-    // !stop
     if (content === '!stop') {
       botState.followingPlayer = null;
       botState.isBusyCrafting = false;
@@ -2084,18 +2129,14 @@ function launchBot() {
     }
   });
 
-  // ============================================================================
-  // ============ IN-GAME CHAT HANDLER =========================================
-  // ============================================================================
+  // ---------- IN-GAME CHAT HANDLER ----------
   bot.on('messagestr', async (message) => {
     if (message.startsWith(`[${bot.username}]`) || message.startsWith(`<${bot.username}>`)) return;
 
-    // Forward to Discord
     if (discordChannel) {
       discordChannel.send(`💬 ${message}`).catch(() => {});
     }
 
-    // Parse message
     const cleanMsg = message.trim();
     const lower = cleanMsg.toLowerCase();
     const match = cleanMsg.match(/(?:<[^>]+>\s*|\[[^\]]+\]\s*|\w+:\s*)?(.*)/);
@@ -2103,15 +2144,12 @@ function launchBot() {
     const args = actualText.split(/\s+/);
     const cmd = args[0]?.toLowerCase();
 
-    // ---------- Follow Command ----------
     if (cmd === 'come' || cmd === 'follow') {
       stopAntiAfk();
       const targetPlayer = actualText.split(' ')[1] || args[1] || '';
       botState.followingPlayer = targetPlayer;
       bot.chat("Aapke paas aa raha hoon!");
     }
-
-    // ---------- Stop Command ----------
     else if (cmd === 'stop') {
       botState.followingPlayer = null;
       botState.isBusyCrafting = false;
@@ -2130,83 +2168,57 @@ function launchBot() {
       bot.collectBlock.cancelTask();
       bot.chat("Sab stop kar diya!");
     }
-
-    // ---------- Craft Command ----------
     else if (cmd === 'craft' && args[1]) {
       const count = parseInt(args[2], 10) || 1;
       smartGatherAndCraft(bot, args[1].toLowerCase(), count);
     }
-
-    // ---------- Mine Command ----------
     else if (cmd === 'mine' || cmd === 'collect') {
       let blockQuery = args[1]?.toLowerCase();
       let count = parseInt(args[2], 10) || 1;
       mineBlocks(bot, blockQuery, count);
     }
-
-    // ---------- Sort Command ----------
     else if (cmd === 'sort') {
       sortAndCleanInventory(bot);
     }
-
-    // ---------- Smelt Command ----------
     else if (cmd === 'smelt') {
       botState.autoSmelt = !botState.autoSmelt;
       if (botState.autoSmelt) runAutoSmelter(bot);
       else clearTimeout(botState.smeltingInterval);
       bot.chat(`🔥 Auto Smelter: ${botState.autoSmelt ? 'ON' : 'OFF'}`);
     }
-
-    // ---------- Netherite Command ----------
     else if (cmd === 'netherite' || cmd === 'debris') {
       startNetheritePipeline(bot);
     }
-
-    // ---------- Guard Command ----------
     else if (cmd === 'guard' || cmd === 'defense') {
       botState.guardMode = !botState.guardMode;
       if (botState.guardMode) startMobDefense(bot);
       else stopMobDefense();
       bot.chat(`🛡️ Auto Mob Defense: ${botState.guardMode ? 'ON' : 'OFF'}`);
     }
-
-    // ---------- AFK Command ----------
     else if (cmd === 'afk') {
       botState.antiAfk ? stopAntiAfk() : startAntiAfk(bot);
     }
-
-    // ---------- Fish Command ----------
     else if (cmd === 'fish') {
       botState.isFishing ? stopFishing() : startFishing(bot);
     }
-
-    // ---------- Farm Command ----------
     else if (cmd === 'farm') {
       botState.autoFarm = !botState.autoFarm;
       if (botState.autoFarm) runFarmLoop(bot);
       else clearTimeout(botState.farmingInterval);
       bot.chat(`🌾 Auto Farm: ${botState.autoFarm ? 'ON' : 'OFF'}`);
     }
-
-    // ---------- Deposit Command ----------
     else if (cmd === 'deposit' || cmd === 'chest') {
       dumpToChest(bot);
     }
-
-    // ---------- Build Command ----------
     else if (cmd === 'build' && args[1] === 'house') {
       executeHouseBuild(bot);
     }
-
-    // ---------- Drop All Command ----------
     else if (cmd === 'dropall') {
       for (const item of bot.inventory.items()) {
         try { await bot.tossStack(item); } catch (e) {}
       }
       bot.chat("Sari inventory drop kar di!");
     }
-
-    // ---------- Chat / AI ----------
     else {
       if (lower.includes('nokar') || lower.includes('bot') || lower.startsWith('!ai')) {
         const prompt = actualText.replace(/^(nokar|bot|!ai)\s*/i, '');
@@ -2216,17 +2228,24 @@ function launchBot() {
     }
   });
 
-  // ============================================================================
-  // ============ RECONNECT & ERROR HANDLING ==================================
-  // ============================================================================
+  // ---------- RECONNECT & ERROR HANDLING ----------
   bot.on('end', (reason) => {
-    console.log(`[RECONNECT] Connection ended (${reason}). Retry in 10s...`);
+    console.log(`[RECONNECT] Connection ended (${reason}). Retry in 30s...`);
     botState.reconnectAttempts++;
 
-    if (botState.reconnectAttempts < botState.maxReconnectAttempts) {
-      setTimeout(launchBot, 10000);
+    // ⚡ IMPORTANT: Agar user ne bot OFF kiya hai, to reconnect mat karo
+    if (!botState.botEnabled) {
+      console.log('[BOT CONTROL] Bot OFF hai, reconnect skip kar raha hoon');
+      return;
+    }
+
+    const delay = Math.min(30000 + (botState.reconnectAttempts * 5000), 120000);
+    console.log(`[RECONNECT] Waiting ${delay/1000}s (attempt ${botState.reconnectAttempts})...`);
+
+    if (botState.reconnectAttempts < 20) {
+      setTimeout(launchBot, delay);
     } else {
-      console.error('[FATAL] Max reconnect attempts reached. Manual restart needed.');
+      console.error('[FATAL] Max reconnect attempts reached.');
     }
   });
 
@@ -2244,7 +2263,6 @@ function launchBot() {
 // ============================================================================
 launchBot();
 
-// Status log every 60 seconds
 setInterval(() => {
   const bot = global.bot;
   if (bot?.entity) {
