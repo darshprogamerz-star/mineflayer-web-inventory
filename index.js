@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * PROJECT: TACTICAL MINECRAFT SURVIVAL MATRIX (FULL HELD-ITEM & MAP ENGINE)
+ * PROJECT: TACTICAL MINECRAFT SURVIVAL MATRIX (JAVA EDITION CORE)
  * TARGET HOST: DG_LAND502.aternos.me:62974
  * ============================================================================
  */
@@ -18,7 +18,7 @@ const BOT_NAME = 'Nokar';
 let currentActiveBot = null;
 let ioInstance = null;
 
-// Base Map Colors Palette (Full 4-shade standard Minecraft palette)
+// Base Map Colors Palette (Full standard Minecraft palette for 128x128 decoding)
 const MAP_BASE_COLORS = [
   [0, 0, 0],
   [127, 178, 56],
@@ -573,7 +573,7 @@ function startWebConsole() {
       </div>
     </div>
 
-    <!-- FULL HELD-ITEM & MAP CARD -->
+    <!-- HELD-ITEM & MAP CARD -->
     <div class="card col-3">
       <h2>Held Item & Map Screen</h2>
       <canvas id="mapCanvas" width="128" height="128"></canvas>
@@ -641,7 +641,6 @@ function startWebConsole() {
     const mapCvs = document.getElementById('mapCanvas');
     const mCtx = mapCvs.getContext('2d');
 
-    // Default static placeholder on map canvas
     mCtx.fillStyle = '#0f172a';
     mCtx.fillRect(0, 0, 128, 128);
     mCtx.fillStyle = '#64748b';
@@ -659,7 +658,6 @@ function startWebConsole() {
       }
     }
 
-    // Helper: Pick appropriate emoji icon for tools/weapons/blocks
     function getItemEmoji(name) {
       if (!name) return '✋';
       const n = name.toLowerCase();
@@ -687,7 +685,6 @@ function startWebConsole() {
       document.getElementById('botHp').innerText = Math.round(d.health) + ' / 20';
       document.getElementById('botFood').innerText = Math.round(d.food) + ' / 20';
 
-      // Update Held Item Full Diagnostics
       if (d.heldItem) {
         document.getElementById('heldItemTitle').innerText = d.heldItem.displayName || d.heldItem.name.replace(/_/g, ' ');
         document.getElementById('heldItemSub').innerText = 'Count: ' + d.heldItem.count + ' | ID: ' + d.heldItem.name;
@@ -710,7 +707,6 @@ function startWebConsole() {
         document.getElementById('durabilityBg').style.display = 'none';
       }
 
-      // Off-hand update
       document.getElementById('offhandTitle').innerText = d.offHandItem ? (d.offHandItem.displayName || d.offHandItem.name.replace(/_/g, ' ')) : 'None';
 
       renderInventory(d.inventory);
@@ -726,7 +722,6 @@ function startWebConsole() {
       box.scrollTop = box.scrollHeight;
     });
 
-    // Native 128x128 Map Packet Stream
     socket.on('captcha_map_render', (pixelData) => {
       if (!pixelData || !pixelData.length) return;
       const imgData = mCtx.createImageData(128, 128);
@@ -843,7 +838,6 @@ function startWebConsole() {
         isHostile: hostileNames.includes(e.name)
       }));
 
-    // Comprehensive Main Hand Data Inspector
     let mainHandData = null;
     if (currentActiveBot.heldItem) {
       const item = currentActiveBot.heldItem;
@@ -856,7 +850,6 @@ function startWebConsole() {
       };
     }
 
-    // Offhand Data Inspector (Slot 45)
     let offHandData = null;
     const offItem = currentActiveBot.inventory.slots[45];
     if (offItem) {
@@ -920,7 +913,6 @@ function launchBot() {
     console.log(`[AGENT LIVE] ${bot.username} entered the server successfully!`);
     safeChat(bot, "Tactical Unit Active. Commands: afk, dropall");
 
-    // Safe map attachment after spawn
     if (bot._client) {
       bot._client.on('map', (packet) => {
         if (!packet || !packet.data || !ioInstance) return;
