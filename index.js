@@ -1,6 +1,15 @@
 /**
  * ============================================================================
- * PROJECT: TACTICAL MINECRAFT SURVIVAL MATRIX (MAP CAPTCHA & ENHANCED UI)
+ * PROJECT: TACTICAL MINECRAFT SURVIVAL MATRIX (FULLY EXPANDED ENGINE)
+ * TARGET HOST: DG_LAND502.aternos.me:62974
+ * MODULES:
+ *   - Fast Web Operations Dashboard (Glassmorphic Theme)
+ *   - Dynamic 32m Perimeter Radar with Yaw Tracking
+ *   - Real-Time 128x128 Pixel Map Captcha Decoder
+ *   - Locomotion D-Pad with Jump & Raycast Block Dig/Interact
+ *   - Live 36-Slot Inventory Visualizer (Hotbar Highlighted)
+ *   - In-Game 2-Way Chat Stream & Terminal Dispatcher
+ *   - Robust Aternos Auto-Reconnect & Anti-AFK Loop
  * ============================================================================
  */
 
@@ -9,6 +18,7 @@ const http = require('http');
 const express = require('express');
 const socketIo = require('socket.io');
 
+// Network & Server Configurations
 const WEB_PORT = process.env.PORT || 3000;
 const SERVER_HOST = process.env.SERVER_HOST || process.argv[2] || 'DG_LAND502.aternos.me';
 const SERVER_PORT = parseInt(process.env.SERVER_PORT || process.argv[3], 10) || 62974;
@@ -17,37 +27,78 @@ const BOT_NAME = process.env.BOT_NAME || process.argv[4] || 'Nokar';
 let currentActiveBot = null;
 let ioInstance = null;
 
-// Base standard Minecraft Map Color Palette (RGBA indices for 128x128 map rendering)
+// Standard Minecraft Map Color Palette (RGBA mapping base for 128x128 canvas)
 const MAP_BASE_COLORS = [
-  [0, 0, 0], [127, 178, 56], [247, 233, 163], [199, 199, 199],
-  [255, 0, 0], [160, 160, 255], [167, 167, 167], [0, 124, 0],
-  [255, 255, 255], [164, 168, 184], [151, 109, 77], [112, 112, 112],
-  [64, 64, 255], [143, 119, 72], [255, 252, 245], [216, 127, 51],
-  [178, 76, 216], [102, 153, 216], [229, 229, 51], [127, 204, 25],
-  [242, 127, 165], [76, 76, 76], [153, 153, 153], [76, 127, 153],
-  [127, 63, 178], [51, 76, 178], [102, 76, 51], [102, 127, 51],
-  [153, 51, 51], [25, 25, 25], [250, 238, 77], [92, 219, 213],
-  [74, 128, 255], [0, 217, 58], [129, 86, 49], [112, 2, 0]
+  [0, 0, 0],
+  [127, 178, 56],
+  [247, 233, 163],
+  [199, 199, 199],
+  [255, 0, 0],
+  [160, 160, 255],
+  [167, 167, 167],
+  [0, 124, 0],
+  [255, 255, 255],
+  [164, 168, 184],
+  [151, 109, 77],
+  [112, 112, 112],
+  [64, 64, 255],
+  [143, 119, 72],
+  [255, 252, 245],
+  [216, 127, 51],
+  [178, 76, 216],
+  [102, 153, 216],
+  [229, 229, 51],
+  [127, 204, 25],
+  [242, 127, 165],
+  [76, 76, 76],
+  [153, 153, 153],
+  [76, 127, 153],
+  [127, 63, 178],
+  [51, 76, 178],
+  [102, 76, 51],
+  [102, 127, 51],
+  [153, 51, 51],
+  [25, 25, 25],
+  [250, 238, 77],
+  [92, 219, 213],
+  [74, 128, 255],
+  [0, 217, 58],
+  [129, 86, 49],
+  [112, 2, 0]
 ];
 
+// Daemon Operational State
 const botState = {
   antiAfk: false,
-  antiAfkInterval: null
+  antiAfkInterval: null,
+  isDigging: false
 };
+
+// ---------------------------------------------------------------------------
+// 1. SURVIVAL & TACTICAL CONTROL LOGIC
+// ---------------------------------------------------------------------------
 
 function toggleAntiAfk(bot) {
   botState.antiAfk = !botState.antiAfk;
+
   if (botState.antiAfk) {
-    bot.chat("Anti-AFK: ON");
+    bot.chat("🛡️ Anti-AFK Engine: ACTIVE");
     botState.antiAfkInterval = setInterval(async () => {
-      if (!botState.antiAfk) return;
+      if (!botState.antiAfk || !bot.entity) return;
+
+      // Small hop to prevent server idle kick
       bot.setControlState('jump', true);
-      setTimeout(() => bot.setControlState('jump', false), 250);
+      setTimeout(() => {
+        bot.setControlState('jump', false);
+      }, 250);
+
+      // Random micro-rotation
       const randomYaw = Math.random() * Math.PI * 2;
-      await bot.look(randomYaw, 0, true).catch(() => {});
-    }, 7000);
+      const randomPitch = (Math.random() - 0.5) * 0.3;
+      await bot.look(randomYaw, randomPitch, true).catch(() => {});
+    }, 6500);
   } else {
-    bot.chat("Anti-AFK: OFF");
+    bot.chat("🛡️ Anti-AFK Engine: DISABLED");
     if (botState.antiAfkInterval) {
       clearInterval(botState.antiAfkInterval);
       botState.antiAfkInterval = null;
@@ -57,35 +108,49 @@ function toggleAntiAfk(bot) {
 }
 
 async function dropAllInventory(bot) {
-  bot.chat("Dropping all items...");
+  if (!bot || !bot.inventory) return;
+
+  bot.chat("📦 Dropping all items from inventory...");
   const items = bot.inventory.items();
+
   for (const item of items) {
     try {
       await bot.tossStack(item);
-      await bot.waitForTicks(2);
-    } catch (e) {}
+      await bot.waitForTicks(2); // Short delay to prevent Aternos packet kick
+    } catch (err) {
+      // Ignored if slot state is already empty
+    }
   }
-  bot.chat("Inventory empty!");
+
+  bot.chat("✅ Inventory cleared!");
 }
 
-function handleManualMove(bot, dir) {
+function handleManualMove(bot, direction) {
   if (!bot || !bot.entity) return;
-  if (dir === 'jump') {
+
+  if (direction === 'jump') {
     bot.setControlState('jump', true);
-    setTimeout(() => bot.setControlState('jump', false), 350);
-  } else if (['forward', 'back', 'left', 'right'].includes(dir)) {
-    bot.setControlState(dir, true);
-    setTimeout(() => bot.setControlState(dir, false), 400);
+    setTimeout(() => {
+      bot.setControlState('jump', false);
+    }, 300);
+  } else if (['forward', 'back', 'left', 'right'].includes(direction)) {
+    bot.setControlState(direction, true);
+    setTimeout(() => {
+      bot.setControlState(direction, false);
+    }, 350);
   }
 }
 
 async function handleAction(bot, actionType) {
   if (!bot || !bot.entity) return;
+
   try {
     if (actionType === 'break') {
       const targetBlock = bot.blockAtCursor(4);
       if (targetBlock && targetBlock.name !== 'air') {
+        botState.isDigging = true;
         await bot.dig(targetBlock).catch(() => {});
+        botState.isDigging = false;
       } else {
         bot.swingArm('right');
       }
@@ -97,12 +162,15 @@ async function handleAction(bot, actionType) {
         bot.activateItem();
       }
     }
-  } catch (e) {}
+  } catch (err) {
+    botState.isDigging = false;
+  }
 }
 
 // ---------------------------------------------------------------------------
-// WEB OPERATIONS DASHBOARD & MAP STREAM ENGINE
+// 2. WEB OPERATIONS CONSOLE (FULL HTML + CSS + CLIENT LOGIC)
 // ---------------------------------------------------------------------------
+
 function startWebConsole() {
   const app = express();
   const server = http.createServer(app);
@@ -130,7 +198,11 @@ function startWebConsole() {
       --text-muted: #8493a8;
     }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
     body {
       background: var(--bg);
@@ -139,7 +211,7 @@ function startWebConsole() {
         radial-gradient(circle at 90% 80%, rgba(247, 151, 30, 0.05) 0%, transparent 40%);
       color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
-      padding: 18px;
+      padding: 20px;
       min-height: 100vh;
     }
 
@@ -265,7 +337,6 @@ function startWebConsole() {
       color: #fff;
     }
 
-    /* CONTROLLER D-PAD */
     .dpad-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -281,7 +352,6 @@ function startWebConsole() {
       margin-top: 10px;
     }
 
-    /* RADAR & MAP */
     #radarCanvas {
       background: #04060a;
       border: 1px solid var(--border);
@@ -310,7 +380,6 @@ function startWebConsole() {
       color: var(--text-muted);
     }
 
-    /* INVENTORY */
     .inventory-container {
       display: grid;
       grid-template-columns: repeat(9, 1fr);
@@ -351,7 +420,6 @@ function startWebConsole() {
       text-shadow: 1px 1px 2px #000;
     }
 
-    /* TERMINAL */
     .log-box {
       height: 150px;
       background: #04060a;
@@ -403,43 +471,43 @@ function startWebConsole() {
 
   <div class="container">
 
-    <!-- VITALS CARD -->
+    <!-- BOT VITALS -->
     <div class="card col-4">
-      <h2>Bot Vitals</h2>
-      <div class="info-row"><span>Unit:</span><strong id="botName">Nokar</strong></div>
-      <div class="info-row"><span>Server:</span><strong id="serverInfo">Connecting...</strong></div>
+      <h2>Bot Diagnostics</h2>
+      <div class="info-row"><span>Unit Name:</span><strong id="botName">Nokar</strong></div>
+      <div class="info-row"><span>Target Server:</span><strong id="serverInfo">Connecting...</strong></div>
       <div class="info-row"><span>Coordinates:</span><strong id="botCoords">0, 0, 0</strong></div>
-      <div class="info-row"><span>Health:</span><strong id="botHp" style="color:var(--accent-green)">20 / 20</strong></div>
-      <div class="info-row"><span>Food:</span><strong id="botFood" style="color:var(--accent-gold)">20 / 20</strong></div>
+      <div class="info-row"><span>Armor HP:</span><strong id="botHp" style="color:var(--accent-green)">20 / 20</strong></div>
+      <div class="info-row"><span>Food Level:</span><strong id="botFood" style="color:var(--accent-gold)">20 / 20</strong></div>
 
       <div style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">
-        <button onclick="dispatchCmd('afk')">🔄 Toggle Anti-AFK</button>
+        <button onclick="dispatchCmd('afk')">🔄 Toggle Anti-AFK Mode</button>
         <button class="btn-danger" onclick="dispatchCmd('dropall')">🗑️ Dump All Inventory</button>
       </div>
     </div>
 
-    <!-- RADAR CARD -->
+    <!-- RADAR (32m) -->
     <div class="card col-5">
-      <h2>Perimeter Radar (32m)</h2>
+      <h2>Perimeter 2D Radar</h2>
       <canvas id="radarCanvas" width="400" height="240"></canvas>
       <div class="radar-legend">
-        <span>🟢 Bot</span>
-        <span>🔵 Player</span>
-        <span>🔴 Hostile</span>
-        <span>⚪ Passive</span>
+        <span>🟢 Unit</span>
+        <span>🔵 Players</span>
+        <span>🔴 Hostiles</span>
+        <span>⚪ Passives</span>
       </div>
     </div>
 
-    <!-- LIVE CAPTCHA MAP CARD -->
+    <!-- CAPTCHA MAP STREAM -->
     <div class="card col-3">
-      <h2>Captcha Map Screen</h2>
+      <h2>Captcha Map Display</h2>
       <canvas id="mapCanvas" width="128" height="128"></canvas>
       <div style="font-size:0.7rem; text-align:center; color:var(--text-muted); margin-top:8px;">
-        Server se aane wala map yahan draw hoga. Dekh kar niche code enter karein.
+        128x128 Packet Render. Code dekh kar terminal me transmit karein.
       </div>
     </div>
 
-    <!-- MANUAL CONTROLLER -->
+    <!-- D-PAD & RAYCAST ACTIONS -->
     <div class="card col-4">
       <h2>Locomotion & Action</h2>
       <div class="dpad-grid">
@@ -454,22 +522,22 @@ function startWebConsole() {
         <div></div>
       </div>
       <div class="action-row">
-        <button onclick="sendAct('break')">⛏️ Break</button>
-        <button onclick="sendAct('interact')">✋ Use/Interact</button>
+        <button onclick="sendAct('break')">⛏️ Left Click</button>
+        <button onclick="sendAct('interact')">✋ Right Click</button>
       </div>
     </div>
 
-    <!-- TERMINAL & IN-GAME CHAT -->
+    <!-- LIVE IN-GAME CHAT & TERMINAL -->
     <div class="card col-8">
-      <h2>In-Game Console & Captcha Dispatcher</h2>
+      <h2>In-Game Chat Stream & Terminal</h2>
       <div class="log-box" id="logs"></div>
       <form class="input-form" onsubmit="event.preventDefault(); transmit();">
-        <input type="text" id="termInput" placeholder="Command, captcha code, or in-game chat (e.g. /login pass, hello)..." />
+        <input type="text" id="termInput" placeholder="Enter in-game message or command (e.g. /login pass, hello)..." />
         <button type="submit" style="background:var(--accent-blue);">Transmit</button>
       </form>
     </div>
 
-    <!-- 36-SLOT INVENTORY -->
+    <!-- 36-SLOT INVENTORY MATRIX -->
     <div class="card col-12">
       <h2>Live Container Matrix (Slots 0 - 35)</h2>
       <div class="inventory-container" id="invMatrix"></div>
@@ -487,7 +555,8 @@ function startWebConsole() {
     socket.on('bot_sync', (d) => {
       document.getElementById('botName').innerText = d.username || 'Nokar';
       document.getElementById('serverInfo').innerText = d.server || 'Aternos';
-      document.getElementById('botCoords').innerText = Math.round(d.coords.x) + ', ' + Math.round(d.coords.y) + ', ' + Math.round(d.coords.z);
+      document.getElementById('botCoords').innerText = 
+        Math.round(d.coords.x) + ', ' + Math.round(d.coords.y) + ', ' + Math.round(d.coords.z);
       document.getElementById('botHp').innerText = Math.round(d.health) + ' / 20';
       document.getElementById('botFood').innerText = Math.round(d.food) + ' / 20';
 
@@ -504,10 +573,11 @@ function startWebConsole() {
       box.scrollTop = box.scrollHeight;
     });
 
-    // Render Raw Map Buffer (128x128 RGBA Stream)
+    // 128x128 Raw RGBA Buffer Render Loop
     socket.on('captcha_map_render', (pixelData) => {
       if (!pixelData || !pixelData.length) return;
       const imgData = mCtx.createImageData(128, 128);
+
       for (let i = 0; i < pixelData.length; i++) {
         imgData.data[i * 4] = pixelData[i][0];
         imgData.data[i * 4 + 1] = pixelData[i][1];
@@ -525,6 +595,7 @@ function startWebConsole() {
         slot.className = 'slot' + (i >= 27 ? ' hotbar' : '');
         const mapped = (i < 9) ? (i + 36) : i;
         const it = items.find(x => x.slot === mapped);
+
         if (it) {
           slot.innerText = it.name.replace(/_/g, ' ').slice(0, 10);
           if (it.count > 1) {
@@ -552,13 +623,13 @@ function startWebConsole() {
         ctx.stroke();
       });
 
-      // Self
+      // Self Center
       ctx.fillStyle = '#00f260';
       ctx.beginPath();
       ctx.arc(cx, cy, 5, 0, Math.PI * 2);
       ctx.fill();
 
-      // Heading line
+      // Heading Yaw Line
       if (yaw !== undefined) {
         ctx.strokeStyle = '#00f260';
         ctx.beginPath();
@@ -567,7 +638,7 @@ function startWebConsole() {
         ctx.stroke();
       }
 
-      // Entities
+      // Entities Plotting
       if (entities) {
         entities.forEach(e => {
           const rx = cx + (e.x - self.x) * scale;
@@ -596,6 +667,7 @@ function startWebConsole() {
 </html>`);
   });
 
+  // State Broadcast Interval (1000ms loop)
   setInterval(() => {
     if (!currentActiveBot || !currentActiveBot.entity) return;
 
@@ -605,7 +677,11 @@ function startWebConsole() {
       count: i.count
     }));
 
-    const hostileNames = ['zombie', 'skeleton', 'spider', 'creeper', 'enderman', 'witch', 'drowned', 'husk', 'stray'];
+    const hostileNames = [
+      'zombie', 'skeleton', 'spider', 'creeper', 'enderman',
+      'witch', 'drowned', 'husk', 'stray', 'phantom'
+    ];
+
     const entities = Object.values(currentActiveBot.entities)
       .filter(e => e !== currentActiveBot.entity && e.position && currentActiveBot.entity.position.distanceTo(e.position) <= 32)
       .map(e => ({
@@ -631,28 +707,33 @@ function startWebConsole() {
     sock.on('terminal_cmd', (cmd) => {
       if (currentActiveBot) currentActiveBot.emit('execute_cmd', cmd);
     });
+
     sock.on('manual_move', (dir) => {
       if (currentActiveBot) handleManualMove(currentActiveBot, dir);
     });
+
     sock.on('manual_action', (type) => {
       if (currentActiveBot) handleAction(currentActiveBot, type);
     });
   });
 
-  server.listen(WEB_PORT, () => console.log(`[OPERATIONS DASHBOARD ONLINE] Bound to Port: ${WEB_PORT}`));
+  server.listen(WEB_PORT, () => {
+    console.log(`[OPERATIONS DASHBOARD ONLINE] Bound to Web Port: ${WEB_PORT}`);
+  });
 }
 
 // ---------------------------------------------------------------------------
-// MAIN MINECRAFT CLIENT ENGINE & MAP PACKET PARSER
+// 3. MAIN DAEMON PROCESS & MINECRAFT CLIENT ENGINE
 // ---------------------------------------------------------------------------
+
 function launchBot() {
-  console.log(`[CONNECTING] Connecting to ${SERVER_HOST}:${SERVER_PORT} as ${BOT_NAME}...`);
+  console.log(`[DAEMON ATTEMPT] Connecting to ${SERVER_HOST}:${SERVER_PORT} as ${BOT_NAME}...`);
 
   const bot = mineflayer.createBot({
     host: SERVER_HOST,
     port: SERVER_PORT,
     username: BOT_NAME,
-    checkTimeoutInterval: 60000,
+    checkTimeoutInterval: 90000,
     version: false,
     hideErrors: false
   });
@@ -660,11 +741,11 @@ function launchBot() {
   currentActiveBot = bot;
 
   bot.once('spawn', () => {
-    console.log(`[AGENT LIVE] ${bot.username} joined the server successfully!`);
+    console.log(`[AGENT LIVE] ${bot.username} entered the server successfully!`);
     bot.chat("Tactical Unit Active. Commands: afk, dropall");
   });
 
-  // Map Captcha Packet Hook (Handles 128x128 Map Network Packets)
+  // Native 128x128 Map Packet Parser
   bot._client.on('map', (packet) => {
     if (!packet || !packet.data || !ioInstance) return;
 
@@ -676,14 +757,16 @@ function launchBot() {
         const colorId = rawPixels[i];
         const baseColor = MAP_BASE_COLORS[Math.floor(colorId / 4)] || [0, 0, 0];
         const shade = [180, 220, 255, 135][colorId % 4] || 255;
+
         const r = Math.floor((baseColor[0] * shade) / 255);
         const g = Math.floor((baseColor[1] * shade) / 255);
         const b = Math.floor((baseColor[2] * shade) / 255);
+
         rgbBuffer.push([r, g, b]);
       }
 
       ioInstance.emit('captcha_map_render', rgbBuffer);
-      console.log(`[CAPTCHA DETECTED] Rendered Map ID #${packet.itemDamage || 0} to Web Console.`);
+      console.log(`[CAPTCHA DETECTED] Rendered Map packet ID #${packet.itemDamage || 0} to Web Console.`);
     } catch (err) {
       console.error('[MAP STREAM ERROR]', err.message);
     }
@@ -695,7 +778,10 @@ function launchBot() {
     }
   });
 
-  bot.on('execute_cmd', (cmdStr) => handleCommand(cmdStr));
+  bot.on('execute_cmd', (cmdStr) => {
+    handleCommand(cmdStr);
+  });
+
   bot.on('chat', (username, message) => {
     if (username === bot.username) return;
     handleCommand(message);
@@ -715,12 +801,14 @@ function launchBot() {
   }
 
   bot.on('kicked', (reason) => {
-    console.warn('[SERVER KICK]', reason);
-    if (ioInstance) ioInstance.emit('chat_relay', `[KICKED]: ${JSON.stringify(reason)}`);
+    console.warn('[SERVER KICK EVENT]', reason);
+    if (ioInstance) {
+      ioInstance.emit('chat_relay', `[KICKED]: ${JSON.stringify(reason)}`);
+    }
   });
 
   bot.on('end', (reason) => {
-    console.log(`[DISCONNECTED] Reason: ${reason}. Reconnecting in 10s...`);
+    console.log(`[DISCONNECTED] Reason: ${reason}. Auto-reconnecting in 10s...`);
     setTimeout(launchBot, 10000);
   });
 
@@ -729,6 +817,12 @@ function launchBot() {
   });
 }
 
-// Start Web Console instantly so Render port-check passes, then connect bot
+// ---------------------------------------------------------------------------
+// 4. BOOTSTRAP INITIALIZER
+// ---------------------------------------------------------------------------
+
+// Web console starts immediately so Render detects port binding instantly
 startWebConsole();
+
+// Minecraft daemon connection triggered
 launchBot();
