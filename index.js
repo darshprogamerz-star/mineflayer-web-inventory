@@ -1,7 +1,7 @@
 /**
  * ============================================================================
- * PROJECT: TACTICAL MINECRAFT SURVIVAL MATRIX (STABLE CONNECTION FIX)
- * TARGET HOST: DG_LAND502.aternos.me:62974
+ * PROJECT: TACTICAL MINECRAFT SURVIVAL MATRIX (STABLE FIXED CORE)
+ * SERVER: DG_LAND502.aternos.me:62974
  * ============================================================================
  */
 
@@ -11,14 +11,14 @@ const express = require('express');
 const socketIo = require('socket.io');
 
 const WEB_PORT = process.env.PORT || 3000;
-const SERVER_HOST = process.env.SERVER_HOST || process.argv[2] || 'DG_LAND502.aternos.me';
-const SERVER_PORT = parseInt(process.env.SERVER_PORT || process.argv[3], 10) || 62974;
-const BOT_NAME = process.env.BOT_NAME || process.argv[4] || 'Nokar';
+const SERVER_HOST = 'DG_LAND502.aternos.me';
+const SERVER_PORT = 62974;
+const BOT_NAME = process.env.BOT_NAME || 'Nokar';
 
 let currentActiveBot = null;
 let ioInstance = null;
 
-// Minecraft Map Color Palette for 128x128 decoding
+// Base Map Colors Palette
 const MAP_BASE_COLORS = [
   [0, 0, 0], [127, 178, 56], [247, 233, 163], [199, 199, 199],
   [255, 0, 0], [160, 160, 255], [167, 167, 167], [0, 124, 0],
@@ -60,8 +60,7 @@ function toggleAntiAfk(bot) {
 async function dropAllInventory(bot) {
   if (!bot || !bot.inventory) return;
   bot.chat("Dropping all items...");
-  const items = bot.inventory.items();
-  for (const item of items) {
+  for (const item of bot.inventory.items()) {
     try {
       await bot.tossStack(item);
       await bot.waitForTicks(2);
@@ -335,7 +334,7 @@ function startWebConsole() {
     <div class="card col-4">
       <h2>Bot Diagnostics</h2>
       <div class="info-row"><span>Unit Name:</span><strong id="botName">Nokar</strong></div>
-      <div class="info-row"><span>Target Server:</span><strong id="serverInfo">Connecting...</strong></div>
+      <div class="info-row"><span>Target Server:</span><strong id="serverInfo">DG_LAND502.aternos.me:62974</strong></div>
       <div class="info-row"><span>Coordinates:</span><strong id="botCoords">0, 0, 0</strong></div>
       <div class="info-row"><span>Armor HP:</span><strong id="botHp" style="color:var(--accent-green)">20 / 20</strong></div>
       <div class="info-row"><span>Food Level:</span><strong id="botFood" style="color:var(--accent-gold)">20 / 20</strong></div>
@@ -406,7 +405,6 @@ function startWebConsole() {
 
     socket.on('bot_sync', (d) => {
       document.getElementById('botName').innerText = d.username || 'Nokar';
-      document.getElementById('serverInfo').innerText = d.server || 'Aternos';
       document.getElementById('botCoords').innerText = Math.round(d.coords.x) + ', ' + Math.round(d.coords.y) + ', ' + Math.round(d.coords.z);
       document.getElementById('botHp').innerText = Math.round(d.health) + ' / 20';
       document.getElementById('botFood').innerText = Math.round(d.food) + ' / 20';
@@ -505,7 +503,6 @@ function startWebConsole() {
 
     ioInstance.emit('bot_sync', {
       username: currentActiveBot.username,
-      server: `${SERVER_HOST}:${SERVER_PORT}`,
       coords: currentActiveBot.entity.position,
       yaw: currentActiveBot.entity.yaw,
       health: currentActiveBot.health || 20,
@@ -526,25 +523,25 @@ function startWebConsole() {
 }
 
 // ---------------------------------------------------------------------------
-// SAFE MINECRAFT CLIENT LAUNCHER
+// MINECRAFT CLIENT ENGINE
 // ---------------------------------------------------------------------------
 function launchBot() {
-  console.log(`[DAEMON ATTEMPT] Connecting to ${SERVER_HOST}:${SERVER_PORT} as ${BOT_NAME}...`);
+  console.log(`[CONNECTING] Connecting directly to ${SERVER_HOST}:${SERVER_PORT}...`);
 
   const bot = mineflayer.createBot({
     host: SERVER_HOST,
     port: SERVER_PORT,
     username: BOT_NAME,
-    checkTimeoutInterval: 120000,
-    version: false
+    checkTimeoutInterval: 120000
   });
 
   currentActiveBot = bot;
 
-  // SAFE MAP LISTENER: Attached only after client session starts
-  bot.once('login', () => {
-    console.log('[SESSION] Authenticated with Minecraft server.');
-    
+  bot.once('spawn', () => {
+    console.log(`[AGENT LIVE] ${bot.username} entered the server successfully!`);
+    bot.chat("Tactical Unit Active. Commands: afk, dropall");
+
+    // Safe map attachment after spawn
     if (bot._client) {
       bot._client.on('map', (packet) => {
         if (!packet || !packet.data || !ioInstance) return;
@@ -564,11 +561,6 @@ function launchBot() {
         } catch (err) {}
       });
     }
-  });
-
-  bot.once('spawn', () => {
-    console.log(`[AGENT LIVE] ${bot.username} entered the server successfully!`);
-    bot.chat("Tactical Unit Active. Commands: afk, dropall");
   });
 
   bot.on('messagestr', (message) => {
@@ -599,7 +591,7 @@ function launchBot() {
   });
 
   bot.on('end', (reason) => {
-    console.log(`[DISCONNECTED] Reason: ${reason}. Retrying in 10s...`);
+    console.log(`[DISCONNECTED] Retrying in 10s...`);
     setTimeout(launchBot, 10000);
   });
 
