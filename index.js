@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * PROJECT: TACTICAL MINECRAFT SURVIVAL MATRIX (JAVA EDITION CORE)
+ * PROJECT: TACTICAL MINECRAFT SURVIVAL MATRIX (DIRECT SOCKET ENGINE)
  * TARGET HOST: DG_LAND502.aternos.me:62974
  * ============================================================================
  */
@@ -381,7 +381,6 @@ function startWebConsole() {
       margin: 0 auto 10px auto;
     }
 
-    /* HELD ITEM INSPECTOR PANEL */
     .held-inspector {
       background: #060910;
       border: 1px solid var(--border);
@@ -893,15 +892,17 @@ function startWebConsole() {
 }
 
 // ---------------------------------------------------------------------------
-// MINECRAFT CLIENT ENGINE
+// MINECRAFT CLIENT ENGINE (DIRECT SOCKET CONNECTION)
 // ---------------------------------------------------------------------------
 function launchBot() {
-  console.log(`[CONNECTING] Connecting to ${SERVER_HOST}:${SERVER_PORT} as ${BOT_NAME}...`);
+  console.log(`[CONNECTING] Connecting directly to ${SERVER_HOST}:${SERVER_PORT} as ${BOT_NAME}...`);
 
+  // Bypass ping.js by enforcing direct TCP connection handshake
   const bot = mineflayer.createBot({
     host: SERVER_HOST,
     port: SERVER_PORT,
     username: BOT_NAME,
+    skipValidation: true,
     checkTimeoutInterval: 120000,
     closeTimeout: 120000,
     noPongTimeout: 120000
