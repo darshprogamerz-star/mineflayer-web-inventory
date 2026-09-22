@@ -1,7 +1,7 @@
 /**
  * ============================================================================
- * PROJECT: TACTICAL MINECRAFT SURVIVAL MATRIX (HELD ITEM & MAP CAPTCHA EDITION)
- * HOST: DG_LAND502.aternos.me:62974
+ * PROJECT: TACTICAL MINECRAFT SURVIVAL MATRIX (ORIGINAL FULL PACKAGE)
+ * TARGET HOST: DG_LAND502.aternos.me:62974
  * ============================================================================
  */
 
@@ -18,17 +18,44 @@ const BOT_NAME = process.env.BOT_NAME || process.argv[4] || 'Nokar';
 let currentActiveBot = null;
 let ioInstance = null;
 
-// Map Colors Palette for RGB Decode
+// Base Map Colors Palette
 const MAP_BASE_COLORS = [
-  [0, 0, 0], [127, 178, 56], [247, 233, 163], [199, 199, 199],
-  [255, 0, 0], [160, 160, 255], [167, 167, 167], [0, 124, 0],
-  [255, 255, 255], [164, 168, 184], [151, 109, 77], [112, 112, 112],
-  [64, 64, 255], [143, 119, 72], [255, 252, 245], [216, 127, 51],
-  [178, 76, 216], [102, 153, 216], [229, 229, 51], [127, 204, 25],
-  [242, 127, 165], [76, 76, 76], [153, 153, 153], [76, 127, 153],
-  [127, 63, 178], [51, 76, 178], [102, 76, 51], [102, 127, 51],
-  [153, 51, 51], [25, 25, 25], [250, 238, 77], [92, 219, 213],
-  [74, 128, 255], [0, 217, 58], [129, 86, 49], [112, 2, 0]
+  [0, 0, 0],
+  [127, 178, 56],
+  [247, 233, 163],
+  [199, 199, 199],
+  [255, 0, 0],
+  [160, 160, 255],
+  [167, 167, 167],
+  [0, 124, 0],
+  [255, 255, 255],
+  [164, 168, 184],
+  [151, 109, 77],
+  [112, 112, 112],
+  [64, 64, 255],
+  [143, 119, 72],
+  [255, 252, 245],
+  [216, 127, 51],
+  [178, 76, 216],
+  [102, 153, 216],
+  [229, 229, 51],
+  [127, 204, 25],
+  [242, 127, 165],
+  [76, 76, 76],
+  [153, 153, 153],
+  [76, 127, 153],
+  [127, 63, 178],
+  [51, 76, 178],
+  [102, 76, 51],
+  [102, 127, 51],
+  [153, 51, 51],
+  [25, 25, 25],
+  [250, 238, 77],
+  [92, 219, 213],
+  [74, 128, 255],
+  [0, 217, 58],
+  [129, 86, 49],
+  [112, 2, 0]
 ];
 
 const botState = {
@@ -43,7 +70,9 @@ function toggleAntiAfk(bot) {
     botState.antiAfkInterval = setInterval(async () => {
       if (!botState.antiAfk || !bot.entity) return;
       bot.setControlState('jump', true);
-      setTimeout(() => bot.setControlState('jump', false), 250);
+      setTimeout(() => {
+        bot.setControlState('jump', false);
+      }, 250);
       const randomYaw = Math.random() * Math.PI * 2;
       await bot.look(randomYaw, 0, true).catch(() => {});
     }, 6500);
@@ -60,7 +89,8 @@ function toggleAntiAfk(bot) {
 async function dropAllInventory(bot) {
   if (!bot || !bot.inventory) return;
   bot.chat("Dropping all items...");
-  for (const item of bot.inventory.items()) {
+  const items = bot.inventory.items();
+  for (const item of items) {
     try {
       await bot.tossStack(item);
       await bot.waitForTicks(2);
@@ -73,10 +103,14 @@ function handleManualMove(bot, dir) {
   if (!bot || !bot.entity) return;
   if (dir === 'jump') {
     bot.setControlState('jump', true);
-    setTimeout(() => bot.setControlState('jump', false), 300);
+    setTimeout(() => {
+      bot.setControlState('jump', false);
+    }, 300);
   } else if (['forward', 'back', 'left', 'right'].includes(dir)) {
     bot.setControlState(dir, true);
-    setTimeout(() => bot.setControlState(dir, false), 350);
+    setTimeout(() => {
+      bot.setControlState(dir, false);
+    }, 350);
   }
 }
 
@@ -128,7 +162,11 @@ function startWebConsole() {
       --text-muted: #8493a8;
     }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
     body {
       background: var(--bg);
@@ -210,14 +248,30 @@ function startWebConsole() {
       letter-spacing: 0.5px;
     }
 
-    .col-4 { grid-column: span 4; }
-    .col-5 { grid-column: span 5; }
-    .col-3 { grid-column: span 3; }
-    .col-8 { grid-column: span 8; }
-    .col-12 { grid-column: span 12; }
+    .col-4 {
+      grid-column: span 4;
+    }
+
+    .col-5 {
+      grid-column: span 5;
+    }
+
+    .col-3 {
+      grid-column: span 3;
+    }
+
+    .col-8 {
+      grid-column: span 8;
+    }
+
+    .col-12 {
+      grid-column: span 12;
+    }
 
     @media (max-width: 1024px) {
-      .col-4, .col-5, .col-3, .col-8 { grid-column: span 12; }
+      .col-4, .col-5, .col-3, .col-8 {
+        grid-column: span 12;
+      }
     }
 
     .info-row {
@@ -231,8 +285,14 @@ function startWebConsole() {
       font-size: 0.88rem;
     }
 
-    .info-row span { color: var(--text-muted); }
-    .info-row strong { font-family: monospace; font-size: 0.95rem; }
+    .info-row span {
+      color: var(--text-muted);
+    }
+
+    .info-row strong {
+      font-family: monospace;
+      font-size: 0.95rem;
+    }
 
     button {
       background: #141c2c;
@@ -296,7 +356,7 @@ function startWebConsole() {
       display: block;
       margin: 0 auto 10px auto;
     }
-    
+
     .held-item-display {
       background: #04060a;
       border: 1px solid var(--border);
@@ -434,7 +494,6 @@ function startWebConsole() {
       </div>
     </div>
 
-    <!-- HELD ITEM & MAP CAPTCHA MODULE -->
     <div class="card col-3">
       <h2>Currently In Hand</h2>
       <canvas id="mapCanvas" width="128" height="128"></canvas>
@@ -485,7 +544,6 @@ function startWebConsole() {
     const mapCvs = document.getElementById('mapCanvas');
     const mCtx = mapCvs.getContext('2d');
 
-    // Default static placeholder on map canvas
     mCtx.fillStyle = '#1f2b42';
     mCtx.fillRect(0, 0, 128, 128);
     mCtx.fillStyle = '#8493a8';
